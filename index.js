@@ -155,21 +155,17 @@ module.exports = (app, { getRouter }) => {
     const {
       'filter-by-commitish': filterByCommitish,
       'include-pre-releases': includePreReleases,
-      'prerelease-identifier': preReleaseIdentifier,
       'tag-prefix': tagPrefix,
       latest,
       prerelease,
     } = config
 
-    const shouldIncludePreReleases = Boolean(
-      includePreReleases || preReleaseIdentifier
-    )
-
     const { draftRelease, lastRelease } = await findReleases({
       context,
       targetCommitish,
       filterByCommitish,
-      includePreReleases: shouldIncludePreReleases,
+      includePreReleases,
+      isPreRelease: prerelease,
       tagPrefix,
     })
 
@@ -252,6 +248,10 @@ function getInput() {
         ? core.getInput('prerelease').toLowerCase() === 'true'
         : undefined,
     preReleaseIdentifier: core.getInput('prerelease-identifier') || undefined,
+    includePreReleases:
+      core.getInput('include-pre-releases') !== ''
+        ? core.getInput('include-pre-releases').toLowerCase() === 'true'
+        : undefined,
     latest: core.getInput('latest')?.toLowerCase() || undefined,
     commitsSince: core.getInput('initial-commits-since') || undefined,
   }
@@ -282,12 +282,20 @@ function updateConfigFromInput(config, input) {
     config['prerelease-identifier'] = input.preReleaseIdentifier
   }
 
+  if (!config.prerelease && config['prerelease-identifier']) {
+    config.prerelease = true
+  }
+
   config.latest = config.prerelease
     ? 'false'
     : input.latest || config.latest || undefined
 
   if (input.commitsSince) {
     config['initial-commits-since'] = input.commitsSince
+  }
+
+  if (input.includePreReleases !== undefined) {
+    config['include-pre-releases'] = input.includePreReleases
   }
 }
 
