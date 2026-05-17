@@ -1,8 +1,9 @@
+import * as core from '@actions/core'
 import type { ReleaseType } from 'semver'
-import type { Config, ExclusiveInput } from '../../config'
-import type { findPreviousReleases } from '../find-previous-releases'
-import type { resolveVersionKeyIncrement } from './resolve-version-increment'
-import { VersionDescriptor } from './version-descriptor'
+import type { Config, ExclusiveInput } from '../../config/index.ts'
+import type { findPreviousReleases } from '../find-previous-releases/index.ts'
+import type { resolveVersionKeyIncrement } from './resolve-version-increment.ts'
+import { VersionDescriptor } from './version-descriptor.ts'
 
 type Release = Exclude<
   Awaited<ReturnType<typeof findPreviousReleases>>['lastRelease'],
@@ -25,19 +26,35 @@ export const getVersionInfo = (params: {
     versionKeyIncrement: _versionKeyIncrement,
   } = params
 
+  core.info(`Resolving version info based on:`)
+  core.info(`   - last release: ${lastRelease?.tag_name || 'none'}`)
+  core.info(
+    `   - version input: ${input.version || input.tag || input.name || 'none'}`,
+  )
+  core.info(`   - version key increment: ${_versionKeyIncrement}`)
+
   let _localIncrement: ReleaseType | 'no_increment' =
     structuredClone(_versionKeyIncrement) // local mutable copy
 
+  core.info(`Coerce and parse versions from last release...`)
   const versionFromLastRelease = new VersionDescriptor(lastRelease, {
     tagPrefix: config['tag-prefix'],
     preReleaseIdentifier: config['prerelease-identifier'],
   })
+  core.info(
+    `Parsed version from last release: ${versionFromLastRelease.version?.format() || 'none'}.`,
+  )
+
+  core.info(`Coerce and parse versions from input...`)
   const versionFromInput = new VersionDescriptor(
     input.version || input.tag || input.name,
     {
       tagPrefix: config['tag-prefix'],
       preReleaseIdentifier: config['prerelease-identifier'],
     },
+  )
+  core.info(
+    `Parsed version from input: ${versionFromInput.version?.format() || 'none'}.`,
   )
 
   let referenceVersion: VersionDescriptor
@@ -52,11 +69,33 @@ export const getVersionInfo = (params: {
         : _localIncrement
     referenceVersion = versionFromLastRelease
   } else {
-    _localIncrement = 'no_increment' // stay at 0.1.0 since no version was provided / found
-    referenceVersion = new VersionDescriptor('0.1.0', {
-      preReleaseIdentifier: config['prerelease-identifier'],
-      tagPrefix: config['tag-prefix'],
-    })
+    // No prior release and no input version: start from 0.1.0.
+    // For prerelease-based increments (prepatch/preminor/premajor) with a
+    // prerelease-identifier, build the reference as "0.1.0-<identifier>.0" and
+    // use no_increment, so $RESOLVED_VERSION = "0.1.0-rc.0" — a prerelease *of*
+    // the initial version rather than a prerelease of the next incremented
+    // version (which semver's prepatch/preminor/premajor would otherwise
+    // produce, e.g. "0.1.1-rc.0").  This restores the v6 behaviour introduced
+    // in PR #1303.
+    if (
+      _versionKeyIncrement?.startsWith('pre') &&
+      config['prerelease-identifier']
+    ) {
+      _localIncrement = 'no_increment'
+      referenceVersion = new VersionDescriptor(
+        `0.1.0-${config['prerelease-identifier']}.0`,
+        {
+          preReleaseIdentifier: config['prerelease-identifier'],
+          tagPrefix: config['tag-prefix'],
+        },
+      )
+    } else {
+      _localIncrement = 'no_increment'
+      referenceVersion = new VersionDescriptor('0.1.0', {
+        preReleaseIdentifier: config['prerelease-identifier'],
+        tagPrefix: config['tag-prefix'],
+      })
+    }
   }
 
   return {

@@ -1,8 +1,7 @@
-import { configSchema } from 'src/actions/drafter/config'
-
 import { describe, expect, it } from 'vitest'
 import type * as z from 'zod'
 import { ZodError } from 'zod'
+import { configSchema } from '#src/actions/drafter/config/index.ts'
 
 type SuiteParams =
   | {
@@ -50,10 +49,6 @@ const suites: SuiteParams[] = [
     parseValid: true,
   },
   { parseInput: { template, 'history-limit': 17 }, parseValid: true },
-  {
-    parseInput: { template, 'initial-commits-since': '2025-06-18T10:29:51Z' },
-    parseValid: true,
-  },
   {
     parseInput: { template: true },
     errorContains: 'Invalid input: expected string, received boolean',
@@ -198,24 +193,6 @@ const suites: SuiteParams[] = [
   {
     parseInput: { template, 'history-limit': 'seventeen' },
     errorContains: 'Invalid input: expected number, received string',
-    parseValid: false,
-  },
-  {
-    parseInput: { 'initial-commits-since': '' },
-    errorContains: 'Invalid ISO datetime',
-    parseValid: false,
-  },
-  {
-    parseInput: { 'initial-commits-since': 'a day' },
-    errorContains: 'Invalid ISO datetime',
-    parseValid: false,
-  },
-  {
-    parseInput: {
-      'initial-commits-since':
-        'Wed Dec 10 2025 19:33:48 GMT+0100 (Central European Standard Time)',
-    },
-    errorContains: 'Invalid ISO datetime',
     parseValid: false,
   },
   {

@@ -1,5 +1,5 @@
-import { renderTemplate } from 'src/actions/drafter/lib/build-release-payload/render-template'
 import { describe, expect, it } from 'vitest'
+import { renderTemplate } from '#src/actions/drafter/lib/build-release-payload/render-template/index.ts'
 
 describe('render template', () => {
   it('replaces $A with B', () => {
@@ -216,6 +216,21 @@ describe('render template', () => {
       })
 
       expect(output).toMatchInlineSnapshot('"abc ABC"')
+    })
+
+    it('supports \\E to terminate case operations before subsequent capture groups', () => {
+      const output = renderTemplate({
+        template: 'hello world',
+        object: {},
+        replacers: [
+          {
+            search: /(hello) (world)/g,
+            replace: '\\U$1\\E $2',
+          },
+        ],
+      })
+
+      expect(output).toMatchInlineSnapshot('"HELLO world"')
     })
   })
 

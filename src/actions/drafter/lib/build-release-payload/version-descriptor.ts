@@ -1,15 +1,15 @@
 import * as core from '@actions/core'
 import type { ReleaseType, SemVer } from 'semver'
-import coerce from 'semver/functions/coerce'
-import inc from 'semver/functions/inc'
-import major from 'semver/functions/major'
-import minor from 'semver/functions/minor'
-import parse from 'semver/functions/parse'
-import patch from 'semver/functions/patch'
-import prerelease from 'semver/functions/prerelease'
-import type { Config } from 'src/actions/drafter/config'
-import type { findPreviousReleases } from '../find-previous-releases'
-import { renderTemplate } from './render-template'
+import coerce from 'semver/functions/coerce.js'
+import inc from 'semver/functions/inc.js'
+import major from 'semver/functions/major.js'
+import minor from 'semver/functions/minor.js'
+import parse from 'semver/functions/parse.js'
+import patch from 'semver/functions/patch.js'
+import prerelease from 'semver/functions/prerelease.js'
+import type { Config } from '#src/actions/drafter/config/index.ts'
+import type { findPreviousReleases } from '../find-previous-releases/index.ts'
+import { renderTemplate } from './render-template/index.ts'
 
 type Release = Exclude<
   Awaited<ReturnType<typeof findPreviousReleases>>['lastRelease'],
@@ -64,13 +64,15 @@ export class VersionDescriptor {
 
       if (!ver) {
         core.warning(
-          `Failed to parse version from input ${from}. Defaulting to null.`,
+          `Failed to parse version from input ${from}. Defaulting coerced version to null.`,
         )
         return null
       }
       return ver
     } else {
-      core.warning(`No version input provided. Defaulting to null.`)
+      core.debug(
+        `Building version descriptor without version input. Defaulting coerced version to null.`,
+      )
       return null
     }
   }

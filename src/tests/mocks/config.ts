@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import type { composeConfigGet } from 'src/common/config'
 import { parse } from 'yaml'
-import { mocks } from '.'
+import type { composeConfigGet } from '#src/common/config/index.ts'
+import { mocks } from './hoisted.ts'
 
 export type AvailableConfigs =
   | 'config-autolabeler'
@@ -20,7 +20,6 @@ export type AvailableConfigs =
   | 'config-with-changes-templates-and-url'
   | 'config-with-changes-templates'
   | 'config-with-commitish'
-  | 'config-with-commits-since'
   | 'config-with-compare-link'
   | 'config-with-component-helpers-custom'
   | 'config-with-component-helpers-default'

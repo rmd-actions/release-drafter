@@ -1,5 +1,5 @@
-import { normalizeFilepath } from 'src/common/config/normalize-filepath'
 import { describe, expect, it } from 'vitest'
+import { normalizeFilepath } from '#src/common/config/normalize-filepath.ts'
 
 const testSuites: Array<{
   // Test cases for normalizeFilepath
@@ -169,6 +169,50 @@ const testSuites: Array<{
       },
     ],
     expected: 'with/a/here-nearby.json',
+  },
+  {
+    // Should not double-prepend .github/ when filepath already starts with .github/
+    input: [
+      {
+        filepath: '.github/release-drafter.yml',
+        ref: 'main',
+        repo: { owner: 'ansible', repo: 'team-devtools' },
+      },
+      {
+        filepath: '.github/release-drafter.yml',
+        ref: 'main',
+        repo: { owner: 'cchanche', repo: 'proj' },
+      },
+    ],
+    expected: '.github/release-drafter.yml',
+  },
+  {
+    // Should not double-prepend .github/ for custom config names either
+    input: [
+      {
+        filepath: '.github/custom-drafter.yml',
+        ref: 'main',
+        repo: { owner: 'ansible', repo: 'team-devtools' },
+      },
+      {
+        filepath: '.github/release-drafter.yml',
+        ref: 'main',
+        repo: { owner: 'cchanche', repo: 'proj' },
+      },
+    ],
+    expected: '.github/custom-drafter.yml',
+  },
+  {
+    // Should not double-prepend .github/ without parent config
+    input: [
+      {
+        filepath: '.github/release-drafter.yml',
+        ref: 'main',
+        repo: { owner: 'ansible', repo: 'team-devtools' },
+      },
+      undefined,
+    ],
+    expected: '.github/release-drafter.yml',
   },
 ]
 

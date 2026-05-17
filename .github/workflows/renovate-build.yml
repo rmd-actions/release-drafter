@@ -14,9 +14,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: ./.github/actions/common-setup
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci
 
       - name: Run all checks and rebuild artifacts
         run: npm run all
@@ -28,9 +33,6 @@ jobs:
           if [ -n "$(git status --porcelain)" ]; then
               git add dist/ \
               badges/coverage.svg \
-              src/types/github.graphql.generated.ts \
-              src/actions/drafter/lib/find-pull-requests/graphql/find-commits-with-path-changes.graphql.generated.ts \
-              src/actions/drafter/lib/find-pull-requests/graphql/find-commits-with-pr.graphql.generated.ts \
               schema.json \
               autolabeler/schema.json \
               drafter/schema.json
