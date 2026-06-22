@@ -1,5 +1,5 @@
 import type * as z from 'zod'
-import { boolean, iso, object, string, stringbool } from 'zod'
+import { boolean, object, string, stringbool } from 'zod'
 
 /**
  * Configuration parameters that can be specified in both
@@ -20,12 +20,7 @@ export const commonConfigSchema = object({
    */
   prerelease: stringbool().or(boolean()).optional(),
   /**
-   * When drafting your first release, limit the amount of scanned commits. Expects an ISO 8601 date. Default: undefined (scan all commits).
-   * @see https://zod.dev/api?id=iso-dates#iso-datetimes
-   */
-  'initial-commits-since': iso.datetime().optional(),
-  /**
-   * A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` if not already set to `true`. Default `''`.
+   * A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both values come from the same config location; explicit action inputs still take precedence. Default `''`.
    */
   'prerelease-identifier': string().optional(),
   /**

@@ -2,18 +2,48 @@ import * as core from '@actions/core'
 import { context } from '@actions/github'
 import type { ParsedConfig } from '../../config'
 import type { findPreviousReleases } from '../find-previous-releases'
+import { findCommitsInComparison } from './find-commits-in-comparison'
 import { findCommitsWithPathChange } from './find-commits-with-path-change'
-import { findCommitsWithPr } from './find-commits-with-pr'
 
 export const findPullRequests = async (params: {
   lastRelease: Awaited<ReturnType<typeof findPreviousReleases>>['lastRelease']
   config: ParsedConfig
 }) => {
-  const since =
-    params.lastRelease?.created_at || params.config['initial-commits-since']
-
   const shouldFilterByIncludedPaths = params.config['include-paths'].length > 0
   const shouldFilterByExcludedPaths = params.config['exclude-paths'].length > 0
+
+  const sharedComparisonParams = {
+    name: context.repo.repo,
+    owner: context.repo.owner,
+    headRef: params.config.commitish,
+    withPullRequestBody: params.config['change-template'].includes('$BODY'),
+    withPullRequestURL: params.config['change-template'].includes('$URL'),
+    withBaseRefName:
+      params.config['change-template'].includes('$BASE_REF_NAME'),
+    withHeadRefName:
+      params.config['change-template'].includes('$HEAD_REF_NAME'),
+    pullRequestLimit: params.config['pull-request-limit'],
+    historyLimit: params.config['history-limit'],
+  }
+
+  let commits: Awaited<ReturnType<typeof findCommitsInComparison>>
+
+  if (!params.lastRelease?.tag_name) {
+    core.warning('A previous (published) release is required to find changes')
+    return { commits: [], pullRequests: [] }
+  }
+
+  core.info(
+    `Finding commits between refs/tags/${params.lastRelease.tag_name} and ${params.config.commitish}...`,
+  )
+  commits = await findCommitsInComparison({
+    baseRef: `refs/tags/${params.lastRelease.tag_name}`,
+    ...sharedComparisonParams,
+  })
+
+  core.info(`Found ${commits.length} commits.`)
+
+  const comparisonCommitIds = new Set(commits.map((c) => c.id))
 
   /**
    * If include-paths are specified,
@@ -29,10 +59,10 @@ export const findPullRequests = async (params: {
     core.info('Finding commits with included path changes...')
     const { commitIdsMatchingPaths, hasFoundCommits } =
       await findCommitsWithPathChange(params.config['include-paths'], {
-        since,
         name: context.repo.repo,
         owner: context.repo.owner,
         targetCommitish: params.config.commitish,
+        comparisonCommitIds,
       })
 
     // Short circuit to avoid blowing GraphQL budget
@@ -56,10 +86,10 @@ export const findPullRequests = async (params: {
     const { commitIdsMatchingPaths } = await findCommitsWithPathChange(
       params.config['exclude-paths'],
       {
-        since,
         name: context.repo.repo,
         owner: context.repo.owner,
         targetCommitish: params.config.commitish,
+        comparisonCommitIds,
       },
     )
 
@@ -72,27 +102,6 @@ export const findPullRequests = async (params: {
       }
     })
   }
-
-  core.info(
-    `Fetching parent commits of ${params.config.commitish}${since ? ` since ${since}` : ''}...`,
-  )
-
-  let commits = await findCommitsWithPr({
-    since,
-    name: context.repo.repo,
-    owner: context.repo.owner,
-    targetCommitish: params.config.commitish,
-    withPullRequestBody: params.config['change-template'].includes('$BODY'),
-    withPullRequestURL: params.config['change-template'].includes('$URL'),
-    withBaseRefName:
-      params.config['change-template'].includes('$BASE_REF_NAME'),
-    withHeadRefName:
-      params.config['change-template'].includes('$HEAD_REF_NAME'),
-    pullRequestLimit: params.config['pull-request-limit'],
-    historyLimit: params.config['history-limit'],
-  })
-
-  core.info(`Found ${commits.length} commits.`)
 
   // Filter-out commits that did not change included paths.
   // Excluded paths take precedence over included paths when both are configured.
@@ -129,7 +138,9 @@ export const findPullRequests = async (params: {
 
   const pullRequests = pullRequestsRaw.filter(
     (pr) =>
-      // Ensure PR is from the same repository
+      // `baseRepository` is the repository the PR targets, not the head/fork repo.
+      // Keep fork PRs that target the current repository, and exclude associated
+      // PRs that belong to some other repository but share the same commit.
       pr.baseRepository?.nameWithOwner ===
         `${context.repo.owner}/${context.repo.repo}` &&
       // Ensure PR is merged
@@ -137,7 +148,7 @@ export const findPullRequests = async (params: {
   )
 
   core.info(
-    `Found ${pullRequestsRaw.length} pull requests associated with those commits. ${pullRequests.length} of those are merged and come from ${context.repo.owner}/${context.repo.repo}${
+    `Found ${pullRequestsRaw.length} pull requests associated with those commits. ${pullRequests.length} of those are merged and target ${context.repo.owner}/${context.repo.repo}${
       pullRequests.length > 0
         ? ` : ${pullRequests.map((pr) => `#${pr.number}`).join(', ')}`
         : '.'

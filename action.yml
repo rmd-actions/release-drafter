@@ -54,7 +54,7 @@ inputs:
     default: ''
   prerelease-identifier:
     description: |
-      A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` if not already set to `true`.
+      A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both values come from the same config location; explicit action inputs still take precedence.
     required: false
     default: ''
   'include-pre-releases':
@@ -89,10 +89,6 @@ inputs:
       Filter releases that satisfies this semver range. Evaluates the tag name againts node's semver.satisfies().
     required: false
     default: ''
-  initial-commits-since:
-    description: |
-      A date in ISO format (eg: '2025-06-18T10:29:51Z') marking the initial commit for the release draft. This is applied only when no prior release is available.
-    required: false
 
 outputs:
   id:
