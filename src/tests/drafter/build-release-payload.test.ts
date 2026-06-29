@@ -1,12 +1,12 @@
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   actionInputSchema,
   configSchema,
   mergeInputAndConfig,
-} from 'src/actions/drafter/config'
-import { buildReleasePayload } from 'src/actions/drafter/lib'
-import { generateChangeLog } from 'src/actions/drafter/lib/build-release-payload/generate-changelog'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { mockContext, mocks as sharedMocks } from '../mocks'
+} from '#src/actions/drafter/config/index.ts'
+import { generateChangeLog } from '#src/actions/drafter/lib/build-release-payload/generate-changelog.ts'
+import { buildReleasePayload } from '#src/actions/drafter/lib/index.ts'
+import { mockContext, mocks as sharedMocks } from '#tests/mocks/index.ts'
 
 describe('generate changelog', () => {
   let config: ReturnType<typeof mergeInputAndConfig>
@@ -317,10 +317,20 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
         __typename: 'LabelConnection',
         nodes: [{ __typename: 'Label', name: 'bug' }],
       },
+      author: {
+        __typename: 'User',
+        login: 'ghost',
+        url: 'https://github.com/ghost',
+      },
       baseRefName: 'master',
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -332,10 +342,20 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
         __typename: 'LabelConnection',
         nodes: [{ __typename: 'Label', name: 'feature' }],
       },
+      author: {
+        __typename: 'User',
+        login: 'ghost',
+        url: 'https://github.com/ghost',
+      },
       baseRefName: 'master',
       headRefName: 'implement-feature',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -356,6 +376,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -376,6 +401,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -396,6 +426,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -416,6 +451,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -436,6 +476,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'fix-bug',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -456,6 +501,11 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'implement-feature',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
     {
       __typename: 'PullRequest',
@@ -477,5 +527,10 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       headRefName: 'dependabot/go_modules/examples/golang.org/x/crypto-0.17.0',
       isCrossRepository: false,
       merged: true,
+      mergedAt: '2024-01-01T00:00:00Z',
+      baseRepository: {
+        __typename: 'Repository',
+        nameWithOwner: 'toolmantim/release-drafter',
+      },
     },
   ]

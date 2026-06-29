@@ -1,4 +1,4 @@
-import { C as setOutput, E as __toESM, S as setFailed, T as __commonJSMin, _ as context, a as _enum, b as getInput, c as number, d as stringbool, f as parseCommitishForRelease, g as getOctokit, h as composeConfigGet, i as ZodDefault, l as object, m as executeGraphql, n as escapeStringRegexp, o as array, p as paginateGraphql, r as sharedInputSchema, s as boolean, t as stringToRegex, u as string, v as debug, w as warning, x as info, y as error } from "../../chunks/common.js";
+import { C as setOutput, E as __toESM, S as setFailed, T as __commonJSMin, _ as stringbool, a as paginateGraphql, b as getInput, c as getOctokit, d as _enum, f as array, g as string, h as object, i as parseCommitishForRelease, l as context, m as number, n as escapeStringRegexp, o as executeGraphql, p as boolean, r as sharedInputSchema, s as composeConfigGet, t as stringToRegex, u as ZodDefault, v as debug, w as warning, x as info, y as error } from "../../chunks/common.js";
 //#region src/actions/drafter/config/schemas/common-config.schema.ts
 /**
 * Configuration parameters that can be specified in both
@@ -10,20 +10,64 @@ import { C as setOutput, E as __toESM, S as setFailed, T as __commonJSMin, _ as 
 * @see merge-input-and-config.ts for how the merging of config and input is handled, including default values.
 */
 var commonConfigSchema = object({
+	/**
+	* A boolean indicating whether the release being created or updated should be marked as latest.
+	*/
 	latest: stringbool().or(boolean()).optional(),
+	/**
+	* Whether to draft a prerelease, with changes since another prerelease (if applicable). Default `false`.
+	*/
 	prerelease: stringbool().or(boolean()).optional(),
+	/**
+	* A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both values come from the same config location; explicit action inputs still take precedence. Default `''`.
+	*/
 	"prerelease-identifier": string().optional(),
+	/**
+	* When looking for the last published release to scan changes up-to, include pre-releases. Has no effect if using `prerelease: true` (already enabled). Default `false`.
+	*/
 	"include-pre-releases": stringbool().or(boolean()).optional(),
+	/**
+	* The release target, i.e. branch or commit it should point to. Default: the ref that release-drafter runs for, e.g. `refs/heads/master` if configured to run on pushes to `master`.
+	*/
 	commitish: string().optional(),
+	/**
+	* A string that would be added before the template body.
+	*/
 	header: string().optional(),
+	/**
+	* A string that would be added after the template body.
+	*/
 	footer: string().optional(),
+	/**
+	* Filter releases that satisfies this semver range. Evaluates the tag name againts node's semver.satisfies().
+	*/
 	"filter-by-range": string().optional()
 });
 var actionInputSchema = object({
+	/**
+	* If your workflow requires multiple release-drafter configs it be helpful to override the config-name.
+	* The config should still be located inside `.github` as that's where we are looking for config files.
+	* @default 'release-drafter.yml'
+	*/
 	"config-name": string().optional().default("release-drafter.yml"),
+	/**
+	* The name that will be used in the GitHub release that's created or updated.
+	* This will override any `name-template` specified in your `release-drafter.yml` if defined.
+	*/
 	name: string().optional(),
+	/**
+	* The tag name to be associated with the GitHub release that's created or updated.
+	* This will override any `tag-template` specified in your `release-drafter.yml` if defined.
+	*/
 	tag: string().optional(),
+	/**
+	* The version to be associated with the GitHub release that's created or updated.
+	* This will override any version calculated by the release-drafter.
+	*/
 	version: string().optional(),
+	/**
+	* A boolean indicating whether the release being created or updated should be immediately published.
+	*/
 	publish: stringbool().optional().default(false)
 }).and(sharedInputSchema).and(commonConfigSchema);
 //#endregion
@@ -52,34 +96,94 @@ var getActionInput = () => {
 //#endregion
 //#region src/actions/drafter/config/schemas/config.schema.ts
 var exclusiveConfigSchema = object({
+	/**
+	* The template to use for each merged pull request.
+	*/
 	"change-template": string().optional().default("* $TITLE (#$NUMBER) @$AUTHOR"),
+	/**
+	* Characters to escape in `$TITLE` when inserting into `change-template` so that they are not interpreted as Markdown format characters.
+	*/
 	"change-title-escapes": string().optional(),
+	/**
+	* The template to use for when there’s no changes.
+	*/
 	"no-changes-template": string().optional().default("* No changes"),
+	/**
+	* The template to use when calculating the next version number for the release. Useful for projects that don't use semantic versioning.
+	*/
 	"version-template": string().optional().default("$MAJOR.$MINOR.$PATCH$PRERELEASE"),
+	/**
+	* The template for the name of the draft release.
+	*/
 	"name-template": string().optional(),
+	/**
+	* A known prefix used to filter release tags. For matching tags, this prefix is stripped before attempting to parse the version.
+	*/
 	"tag-prefix": string().optional(),
+	/**
+	* The template for the tag of the draft release.
+	*/
 	"tag-template": string().optional(),
+	/**
+	* Exclude pull requests using labels.
+	*/
 	"exclude-labels": array(string()).optional().default([]),
+	/**
+	* Include only the specified pull requests using labels.
+	*/
 	"include-labels": array(string()).optional().default([]),
+	/**
+	* Restrict pull requests included in the release notes to only the pull requests that modified any of the paths in this array. Supports files and directories.
+	*/
 	"include-paths": array(string()).optional().default([]),
+	/**
+	* Exclude pull requests from the release notes if they modified any of the paths in this array. Supports files and directories. If used with `include-paths`, the exclusion takes precedence.
+	*/
 	"exclude-paths": array(string()).optional().default([]),
+	/**
+	* Exclude specific usernames from the generated `$CONTRIBUTORS` variable.
+	*/
 	"exclude-contributors": array(string()).optional().default([]),
+	/**
+	* The template to use for `$CONTRIBUTORS` when there's no contributors to list.
+	*/
 	"no-contributors-template": string().optional().default("No contributors"),
+	/**
+	* Sort changelog by merged_at or title.
+	*/
 	"sort-by": _enum(["merged_at", "title"]).optional().default("merged_at"),
+	/**
+	* Sort changelog in ascending or descending order.
+	*/
 	"sort-direction": _enum(["ascending", "descending"]).optional().default("descending"),
+	/**
+	* Filter previous releases to consider only those with the target matching `commitish`.
+	*/
 	"filter-by-commitish": boolean().optional().default(false),
 	"pull-request-limit": number().int().positive().optional().default(5),
+	/**
+	* Size of the pagination window when walking the repo. Can avoid erratic 502s from Github. Default: `15`
+	*/
 	"history-limit": number().int().positive().optional().default(15),
+	/**
+	* Search and replace content in the generated changelog body.
+	*/
 	replacers: array(object({
 		search: string().min(1),
 		replace: string().min(0)
 	})).optional().default([]),
+	/**
+	* Categorize pull requests using labels.
+	*/
 	categories: array(object({
 		title: string().min(1),
 		"collapse-after": number().int().min(-1).optional().default(-1),
 		labels: array(string().min(1)).optional().default([]),
 		label: string().min(1).optional()
 	})).optional().default([]),
+	/**
+	* Adjust the `$RESOLVED_VERSION` variable using labels.
+	*/
 	"version-resolver": object({
 		major: object({ labels: array(string().min(1)) }).optional().default({ labels: [] }),
 		minor: object({ labels: array(string().min(1)) }).optional().default({ labels: [] }),
@@ -95,7 +199,14 @@ var exclusiveConfigSchema = object({
 		patch: { labels: [] },
 		default: "patch"
 	}),
+	/**
+	* The template to use for each category.
+	*/
 	"category-template": string().optional().default("## $TITLE"),
+	/**
+	* The template for the body of the draft release.
+	* Optional as it may be inherited via `_extends`.
+	*/
 	template: string().optional().default("")
 }).meta({
 	title: "JSON schema for Release Drafter yaml files",
@@ -1611,7 +1722,7 @@ var VersionDescriptor = class VersionDescriptor {
 		return typeof input === "object" && input !== null && (typeof input?.tag_name === "string" || typeof input?.name === "string");
 	}
 	_stripTag(input) {
-		return !!this.tagPrefix && input?.startsWith(this.tagPrefix) ? input.slice(this.tagPrefix.length) : input;
+		return this.tagPrefix && input?.startsWith(this.tagPrefix) ? input.slice(this.tagPrefix.length) : input;
 	}
 	_toSemver(version) {
 		const result = (0, import_parse.default)(version);
@@ -2464,6 +2575,13 @@ var FindCommitsInComparisonDocument = {
 																"kind": "Field",
 																"name": {
 																	"kind": "Name",
+																	"value": "oid"
+																}
+															},
+															{
+																"kind": "Field",
+																"name": {
+																	"kind": "Name",
 																	"value": "committedDate"
 																}
 															},
@@ -2559,268 +2677,13 @@ var FindCommitsInComparisonDocument = {
 																		},
 																		"selectionSet": {
 																			"kind": "SelectionSet",
-																			"selections": [
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "__typename"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "title"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "number"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "url"
-																					},
-																					"directives": [{
-																						"kind": "Directive",
-																						"name": {
-																							"kind": "Name",
-																							"value": "include"
-																						},
-																						"arguments": [{
-																							"kind": "Argument",
-																							"name": {
-																								"kind": "Name",
-																								"value": "if"
-																							},
-																							"value": {
-																								"kind": "Variable",
-																								"name": {
-																									"kind": "Name",
-																									"value": "withPullRequestURL"
-																								}
-																							}
-																						}]
-																					}]
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "body"
-																					},
-																					"directives": [{
-																						"kind": "Directive",
-																						"name": {
-																							"kind": "Name",
-																							"value": "include"
-																						},
-																						"arguments": [{
-																							"kind": "Argument",
-																							"name": {
-																								"kind": "Name",
-																								"value": "if"
-																							},
-																							"value": {
-																								"kind": "Variable",
-																								"name": {
-																									"kind": "Name",
-																									"value": "withPullRequestBody"
-																								}
-																							}
-																						}]
-																					}]
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "author"
-																					},
-																					"selectionSet": {
-																						"kind": "SelectionSet",
-																						"selections": [
-																							{
-																								"kind": "Field",
-																								"name": {
-																									"kind": "Name",
-																									"value": "__typename"
-																								}
-																							},
-																							{
-																								"kind": "Field",
-																								"name": {
-																									"kind": "Name",
-																									"value": "login"
-																								}
-																							},
-																							{
-																								"kind": "Field",
-																								"name": {
-																									"kind": "Name",
-																									"value": "url"
-																								}
-																							}
-																						]
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "baseRepository"
-																					},
-																					"selectionSet": {
-																						"kind": "SelectionSet",
-																						"selections": [{
-																							"kind": "Field",
-																							"name": {
-																								"kind": "Name",
-																								"value": "__typename"
-																							}
-																						}, {
-																							"kind": "Field",
-																							"name": {
-																								"kind": "Name",
-																								"value": "nameWithOwner"
-																							}
-																						}]
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "mergedAt"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "isCrossRepository"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "labels"
-																					},
-																					"arguments": [{
-																						"kind": "Argument",
-																						"name": {
-																							"kind": "Name",
-																							"value": "first"
-																						},
-																						"value": {
-																							"kind": "IntValue",
-																							"value": "100"
-																						}
-																					}],
-																					"selectionSet": {
-																						"kind": "SelectionSet",
-																						"selections": [{
-																							"kind": "Field",
-																							"name": {
-																								"kind": "Name",
-																								"value": "__typename"
-																							}
-																						}, {
-																							"kind": "Field",
-																							"name": {
-																								"kind": "Name",
-																								"value": "nodes"
-																							},
-																							"selectionSet": {
-																								"kind": "SelectionSet",
-																								"selections": [{
-																									"kind": "Field",
-																									"name": {
-																										"kind": "Name",
-																										"value": "__typename"
-																									}
-																								}, {
-																									"kind": "Field",
-																									"name": {
-																										"kind": "Name",
-																										"value": "name"
-																									}
-																								}]
-																							}
-																						}]
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "merged"
-																					}
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "baseRefName"
-																					},
-																					"directives": [{
-																						"kind": "Directive",
-																						"name": {
-																							"kind": "Name",
-																							"value": "include"
-																						},
-																						"arguments": [{
-																							"kind": "Argument",
-																							"name": {
-																								"kind": "Name",
-																								"value": "if"
-																							},
-																							"value": {
-																								"kind": "Variable",
-																								"name": {
-																									"kind": "Name",
-																									"value": "withBaseRefName"
-																								}
-																							}
-																						}]
-																					}]
-																				},
-																				{
-																					"kind": "Field",
-																					"name": {
-																						"kind": "Name",
-																						"value": "headRefName"
-																					},
-																					"directives": [{
-																						"kind": "Directive",
-																						"name": {
-																							"kind": "Name",
-																							"value": "include"
-																						},
-																						"arguments": [{
-																							"kind": "Argument",
-																							"name": {
-																								"kind": "Name",
-																								"value": "if"
-																							},
-																							"value": {
-																								"kind": "Variable",
-																								"name": {
-																									"kind": "Name",
-																									"value": "withHeadRefName"
-																								}
-																							}
-																						}]
-																					}]
+																			"selections": [{
+																				"kind": "FragmentSpread",
+																				"name": {
+																					"kind": "Name",
+																					"value": "PullRequestFields"
 																				}
-																			]
+																			}]
 																		}
 																	}]
 																}
@@ -2837,6 +2700,284 @@ var FindCommitsInComparisonDocument = {
 					}]
 				}
 			}]
+		}
+	}, {
+		"kind": "FragmentDefinition",
+		"name": {
+			"kind": "Name",
+			"value": "PullRequestFields"
+		},
+		"typeCondition": {
+			"kind": "NamedType",
+			"name": {
+				"kind": "Name",
+				"value": "PullRequest"
+			}
+		},
+		"selectionSet": {
+			"kind": "SelectionSet",
+			"selections": [
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "__typename"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "title"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "number"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "url"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withPullRequestURL"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "body"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withPullRequestBody"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "author"
+					},
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "__typename"
+								}
+							},
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "login"
+								}
+							},
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "url"
+								}
+							}
+						]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "baseRepository"
+					},
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [{
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "__typename"
+							}
+						}, {
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "nameWithOwner"
+							}
+						}]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "mergedAt"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "isCrossRepository"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "labels"
+					},
+					"arguments": [{
+						"kind": "Argument",
+						"name": {
+							"kind": "Name",
+							"value": "first"
+						},
+						"value": {
+							"kind": "IntValue",
+							"value": "100"
+						}
+					}],
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [{
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "__typename"
+							}
+						}, {
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "nodes"
+							},
+							"selectionSet": {
+								"kind": "SelectionSet",
+								"selections": [{
+									"kind": "Field",
+									"name": {
+										"kind": "Name",
+										"value": "__typename"
+									}
+								}, {
+									"kind": "Field",
+									"name": {
+										"kind": "Name",
+										"value": "name"
+									}
+								}]
+							}
+						}]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "merged"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "baseRefName"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withBaseRefName"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "headRefName"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withHeadRefName"
+								}
+							}
+						}]
+					}]
+				}
+			]
 		}
 	}]
 };
@@ -3184,6 +3325,647 @@ var findCommitsWithPathChange = async (paths, params) => {
 	};
 };
 //#endregion
+//#region src/actions/drafter/lib/find-pull-requests/graphql/find-recent-merged-pull-requests.graphql.generated.ts
+var FindRecentMergedPullRequestsDocument = {
+	"kind": "Document",
+	"definitions": [{
+		"kind": "OperationDefinition",
+		"operation": "query",
+		"name": {
+			"kind": "Name",
+			"value": "findRecentMergedPullRequests"
+		},
+		"variableDefinitions": [
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "name"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "String"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "owner"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "String"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "baseRefName"
+					}
+				},
+				"type": {
+					"kind": "NamedType",
+					"name": {
+						"kind": "Name",
+						"value": "String"
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "limit"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "Int"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "withPullRequestBody"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "Boolean"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "withPullRequestURL"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "Boolean"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "withBaseRefName"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "Boolean"
+						}
+					}
+				}
+			},
+			{
+				"kind": "VariableDefinition",
+				"variable": {
+					"kind": "Variable",
+					"name": {
+						"kind": "Name",
+						"value": "withHeadRefName"
+					}
+				},
+				"type": {
+					"kind": "NonNullType",
+					"type": {
+						"kind": "NamedType",
+						"name": {
+							"kind": "Name",
+							"value": "Boolean"
+						}
+					}
+				}
+			}
+		],
+		"selectionSet": {
+			"kind": "SelectionSet",
+			"selections": [{
+				"kind": "Field",
+				"name": {
+					"kind": "Name",
+					"value": "repository"
+				},
+				"arguments": [{
+					"kind": "Argument",
+					"name": {
+						"kind": "Name",
+						"value": "name"
+					},
+					"value": {
+						"kind": "Variable",
+						"name": {
+							"kind": "Name",
+							"value": "name"
+						}
+					}
+				}, {
+					"kind": "Argument",
+					"name": {
+						"kind": "Name",
+						"value": "owner"
+					},
+					"value": {
+						"kind": "Variable",
+						"name": {
+							"kind": "Name",
+							"value": "owner"
+						}
+					}
+				}],
+				"selectionSet": {
+					"kind": "SelectionSet",
+					"selections": [{
+						"kind": "Field",
+						"name": {
+							"kind": "Name",
+							"value": "pullRequests"
+						},
+						"arguments": [
+							{
+								"kind": "Argument",
+								"name": {
+									"kind": "Name",
+									"value": "states"
+								},
+								"value": {
+									"kind": "ListValue",
+									"values": [{
+										"kind": "EnumValue",
+										"value": "MERGED"
+									}]
+								}
+							},
+							{
+								"kind": "Argument",
+								"name": {
+									"kind": "Name",
+									"value": "baseRefName"
+								},
+								"value": {
+									"kind": "Variable",
+									"name": {
+										"kind": "Name",
+										"value": "baseRefName"
+									}
+								}
+							},
+							{
+								"kind": "Argument",
+								"name": {
+									"kind": "Name",
+									"value": "orderBy"
+								},
+								"value": {
+									"kind": "ObjectValue",
+									"fields": [{
+										"kind": "ObjectField",
+										"name": {
+											"kind": "Name",
+											"value": "field"
+										},
+										"value": {
+											"kind": "EnumValue",
+											"value": "UPDATED_AT"
+										}
+									}, {
+										"kind": "ObjectField",
+										"name": {
+											"kind": "Name",
+											"value": "direction"
+										},
+										"value": {
+											"kind": "EnumValue",
+											"value": "DESC"
+										}
+									}]
+								}
+							},
+							{
+								"kind": "Argument",
+								"name": {
+									"kind": "Name",
+									"value": "first"
+								},
+								"value": {
+									"kind": "Variable",
+									"name": {
+										"kind": "Name",
+										"value": "limit"
+									}
+								}
+							}
+						],
+						"selectionSet": {
+							"kind": "SelectionSet",
+							"selections": [{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "__typename"
+								}
+							}, {
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "nodes"
+								},
+								"selectionSet": {
+									"kind": "SelectionSet",
+									"selections": [{
+										"kind": "FragmentSpread",
+										"name": {
+											"kind": "Name",
+											"value": "PullRequestFields"
+										}
+									}, {
+										"kind": "Field",
+										"name": {
+											"kind": "Name",
+											"value": "mergeCommit"
+										},
+										"selectionSet": {
+											"kind": "SelectionSet",
+											"selections": [{
+												"kind": "Field",
+												"name": {
+													"kind": "Name",
+													"value": "__typename"
+												}
+											}, {
+												"kind": "Field",
+												"name": {
+													"kind": "Name",
+													"value": "oid"
+												}
+											}]
+										}
+									}]
+								}
+							}]
+						}
+					}]
+				}
+			}]
+		}
+	}, {
+		"kind": "FragmentDefinition",
+		"name": {
+			"kind": "Name",
+			"value": "PullRequestFields"
+		},
+		"typeCondition": {
+			"kind": "NamedType",
+			"name": {
+				"kind": "Name",
+				"value": "PullRequest"
+			}
+		},
+		"selectionSet": {
+			"kind": "SelectionSet",
+			"selections": [
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "__typename"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "title"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "number"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "url"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withPullRequestURL"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "body"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withPullRequestBody"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "author"
+					},
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "__typename"
+								}
+							},
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "login"
+								}
+							},
+							{
+								"kind": "Field",
+								"name": {
+									"kind": "Name",
+									"value": "url"
+								}
+							}
+						]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "baseRepository"
+					},
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [{
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "__typename"
+							}
+						}, {
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "nameWithOwner"
+							}
+						}]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "mergedAt"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "isCrossRepository"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "labels"
+					},
+					"arguments": [{
+						"kind": "Argument",
+						"name": {
+							"kind": "Name",
+							"value": "first"
+						},
+						"value": {
+							"kind": "IntValue",
+							"value": "100"
+						}
+					}],
+					"selectionSet": {
+						"kind": "SelectionSet",
+						"selections": [{
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "__typename"
+							}
+						}, {
+							"kind": "Field",
+							"name": {
+								"kind": "Name",
+								"value": "nodes"
+							},
+							"selectionSet": {
+								"kind": "SelectionSet",
+								"selections": [{
+									"kind": "Field",
+									"name": {
+										"kind": "Name",
+										"value": "__typename"
+									}
+								}, {
+									"kind": "Field",
+									"name": {
+										"kind": "Name",
+										"value": "name"
+									}
+								}]
+							}
+						}]
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "merged"
+					}
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "baseRefName"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withBaseRefName"
+								}
+							}
+						}]
+					}]
+				},
+				{
+					"kind": "Field",
+					"name": {
+						"kind": "Name",
+						"value": "headRefName"
+					},
+					"directives": [{
+						"kind": "Directive",
+						"name": {
+							"kind": "Name",
+							"value": "include"
+						},
+						"arguments": [{
+							"kind": "Argument",
+							"name": {
+								"kind": "Name",
+								"value": "if"
+							},
+							"value": {
+								"kind": "Variable",
+								"name": {
+									"kind": "Name",
+									"value": "withHeadRefName"
+								}
+							}
+						}]
+					}]
+				}
+			]
+		}
+	}]
+};
+//#endregion
+//#region src/actions/drafter/lib/find-pull-requests/find-recent-merged-pull-requests.ts
+var RECENT_PR_LOOKBACK = 5;
+var findRecentMergedPullRequests = async (params) => {
+	const octokit = getOctokit();
+	const nameWithOwner = `${context.repo.owner}/${context.repo.repo}`;
+	const missingPRs = ((await executeGraphql(octokit.graphql, FindRecentMergedPullRequestsDocument, {
+		name: context.repo.repo,
+		owner: context.repo.owner,
+		baseRefName: params.baseRefName,
+		limit: RECENT_PR_LOOKBACK,
+		...params.fieldFlags
+	})).repository?.pullRequests.nodes ?? []).filter((pr) => {
+		if (!pr?.mergeCommit?.oid) return false;
+		const prKey = `${nameWithOwner}#${pr.number}`;
+		return params.commitOids.has(pr.mergeCommit.oid) && !params.foundPrKeys.has(prKey);
+	});
+	if (missingPRs.length === 0) return [];
+	info(`Found ${missingPRs.length} recently merged PR(s) missing from GraphQL index, recovering: ${missingPRs.map((pr) => `#${pr?.number}`).join(", ")}`);
+	return missingPRs.filter((pr) => pr != null);
+};
+//#endregion
 //#region src/actions/drafter/lib/find-pull-requests/find-pull-requests.ts
 var findPullRequests = async (params) => {
 	const shouldFilterByIncludedPaths = params.config["include-paths"].length > 0;
@@ -3261,9 +4043,25 @@ var findPullRequests = async (params) => {
 		return true;
 	});
 	if (shouldFilterByIncludedPaths || shouldFilterByExcludedPaths) info(`After filtering by path changes, ${commits.length} commits remain.`);
-	const pullRequestsRaw = [...new Map(commits.flatMap((commit) => commit.associatedPullRequests?.nodes ?? []).filter((pr) => pr != null).map((pr) => [`${pr.baseRepository?.nameWithOwner}#${pr.number}`, pr])).values()];
-	const pullRequests = pullRequestsRaw.filter((pr) => pr.baseRepository?.nameWithOwner === `${context.repo.owner}/${context.repo.repo}` && pr.merged);
-	info(`Found ${pullRequestsRaw.length} pull requests associated with those commits. ${pullRequests.length} of those are merged and target ${context.repo.owner}/${context.repo.repo}${pullRequests.length > 0 ? ` : ${pullRequests.map((pr) => `#${pr.number}`).join(", ")}` : "."}`);
+	const pullRequestsByKey = new Map(commits.flatMap((commit) => commit.associatedPullRequests?.nodes ?? []).filter((pr) => pr != null).map((pr) => [`${pr.baseRepository?.nameWithOwner}#${pr.number}`, pr]));
+	const pullRequestsRaw = [...pullRequestsByKey.values()];
+	const comparisonCommitOids = new Set(commits.flatMap((c) => c.oid ? [c.oid] : []));
+	const { commitish } = params.config;
+	const isBranchRef = commitish.startsWith("refs/heads/");
+	const isUnsupportedRef = commitish.startsWith("refs/tags/") || commitish.startsWith("refs/pull/");
+	const recoveredPRs = comparisonCommitOids.size === 0 || isUnsupportedRef ? [] : await findRecentMergedPullRequests({
+		baseRefName: isBranchRef ? commitish.replace(/^refs\/heads\//, "") : null,
+		commitOids: comparisonCommitOids,
+		foundPrKeys: new Set(pullRequestsByKey.keys()),
+		fieldFlags: {
+			withPullRequestBody: sharedComparisonParams.withPullRequestBody,
+			withPullRequestURL: sharedComparisonParams.withPullRequestURL,
+			withBaseRefName: sharedComparisonParams.withBaseRefName,
+			withHeadRefName: sharedComparisonParams.withHeadRefName
+		}
+	});
+	const pullRequests = [...pullRequestsRaw, ...recoveredPRs].filter((pr) => pr.baseRepository?.nameWithOwner === `${context.repo.owner}/${context.repo.repo}` && pr.merged);
+	info(`Found ${pullRequests.length} merged pull requests targeting ${context.repo.owner}/${context.repo.repo}${pullRequests.length > 0 ? `: ${pullRequests.map((pr) => `#${pr.number}`).join(", ")}` : "."}`);
 	return {
 		commits,
 		pullRequests
