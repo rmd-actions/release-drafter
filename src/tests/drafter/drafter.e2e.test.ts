@@ -2182,6 +2182,41 @@ describe('drafter e2e', () => {
           query: 'query findCommitsWithPathChangesQuery',
           payload: 'graphql-include-path-src-5.md-merge-commit',
         },
+      ])
+      await runDrafter()
+      expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
+        [
+          {
+            "body": "# What's Changed
+        * No changes
+        ",
+            "draft": true,
+            "make_latest": "true",
+            "name": "v2.0.1 (Code name: Placeholder)",
+            "prerelease": false,
+            "tag_name": "v2.0.1",
+            "target_commitish": "refs/heads/master",
+          },
+        ]
+      `)
+      expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(mocks.core.setFailed).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('with category-based pre-include path config', () => {
+    it('returns the modified paths', async () => {
+      await mockContext('push')
+      mocks.config.mockReturnValue('config-with-category-pre-include-paths')
+      const scope = nockGetAndPostReleases({
+        fetchedReleases: ['release'],
+      })
+      const gqlScope = mockGraphqlQuery([
+        {
+          query: 'query findCommitsInComparison',
+          payload: 'graphql-comparison-merge-commit',
+        },
         {
           query: 'query findCommitsWithPathChangesQuery',
           payload: 'graphql-include-path-src-5.md-merge-commit',
@@ -2192,7 +2227,7 @@ describe('drafter e2e', () => {
         [
           {
             "body": "# What's Changed
-        * No changes
+        * Add documentation (#5) @TimonVS
         ",
             "draft": true,
             "make_latest": "true",
@@ -3259,6 +3294,38 @@ describe('drafter e2e', () => {
       })
     })
 
+    describe('with category-based version resolver', () => {
+      it('major beats others', async () => {
+        await mockContext('push')
+        mocks.config.mockReturnValue(
+          'config-with-category-version-resolver-major',
+        )
+        const scope = nockGetAndPostReleases({
+          fetchedReleases: ['release'],
+        })
+        const gqlScope = mockGraphqlQuery({
+          payload: 'graphql-comparison-forking',
+        })
+        await runDrafter()
+        expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
+          [
+            {
+              "body": "dummy",
+              "draft": true,
+              "make_latest": "true",
+              "name": "v3.0.0",
+              "prerelease": false,
+              "tag_name": "v3.0.0",
+              "target_commitish": "refs/heads/master",
+            },
+          ]
+        `)
+        expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+        expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
+        expect(mocks.core.setFailed).not.toHaveBeenCalled()
+      })
+    })
+
     describe('with commitish', () => {
       it('allows specification of a target commitish', async () => {
         await mockContext('push')
@@ -3341,10 +3408,10 @@ describe('drafter e2e', () => {
 
   describe('dry-run', () => {
     describe('when no existing draft release exists (create)', () => {
-      it('does not perform any write operations and logs the payload', async () => {
+      it('does not perform any write operations, logs the payload, and sets computed outputs', async () => {
         await mockContext('push')
         await mockInput('dry-run', 'true')
-        mocks.config.mockReturnValue('config')
+        mocks.config.mockReturnValue('config-with-resolved-version-template')
 
         const gqlScope = mockGraphqlQuery({
           payload: 'graphql-comparison-no-prs',
@@ -3362,6 +3429,8 @@ describe('drafter e2e', () => {
         // Dry-run message should have been logged
         const infoMessages = mocks.core.info.mock.calls.flat()
         expect(infoMessages.some((msg) => msg.includes('[dry-run]'))).toBe(true)
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.1')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('name', 'v2.0.1 🌈')
 
         expect(scope.isDone()).toBe(true) // GET releases was called
         expect(gqlScope.pendingMocks().length).toBe(0)
@@ -3370,13 +3439,13 @@ describe('drafter e2e', () => {
     })
 
     describe('when an existing draft release exists (update)', () => {
-      it('does not perform any write operations and logs the payload', async () => {
+      it('does not perform any write operations, logs the payload, and sets computed outputs', async () => {
         await mockContext('push')
         await mockInput('dry-run', 'true')
-        mocks.config.mockReturnValue('config')
+        mocks.config.mockReturnValue('config-with-resolved-version-template')
 
         const gqlScope = mockGraphqlQuery({
-          payload: 'graphql-comparison-merge-commit',
+          payload: 'graphql-comparison-no-prs',
         })
 
         // Only a GET scope — no PATCH scope, so any attempt to update a release
@@ -3393,6 +3462,8 @@ describe('drafter e2e', () => {
         // Dry-run message should have been logged
         const infoMessages = mocks.core.info.mock.calls.flat()
         expect(infoMessages.some((msg) => msg.includes('[dry-run]'))).toBe(true)
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.1')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('name', 'v2.0.1 🌈')
 
         expect(scope.isDone()).toBe(true) // GET releases was called
         expect(gqlScope.pendingMocks().length).toBe(0)
