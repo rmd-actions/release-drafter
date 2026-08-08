@@ -1,3 +1,5 @@
+import { CommitParser } from 'conventional-commits-parser'
+import ignore from 'ignore'
 import type { ParsedConfig } from '../config/index.ts'
 
 type ParsedCategory = ParsedConfig['categories'][number]
@@ -6,11 +8,20 @@ type LabelsMode = ParsedCondition['labels-mode']
 type PathsMode = ParsedCondition['paths-mode']
 
 type PullRequestLike = {
+  title?: string
   labels?: {
     nodes?: ({ name?: string | null } | null)[] | null
   } | null
-  matchedPaths?: string[]
+  changedFiles?: string[]
 }
+
+// Matches conventional-changelog's conventionalcommits preset so `!` breaking
+// markers are parsed into notes instead of rejected by the default parser.
+// https://github.com/conventional-changelog/conventional-changelog/blob/74a977a970f0eb5cdf317538baec8290eb909a05/packages/conventional-changelog-conventionalcommits/src/parser.js#L4
+const conventionalParser = new CommitParser({
+  headerPattern: /^(\w*)(?:\((.*)\))?!?: (.*)$/,
+  breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!: (.*)$/,
+})
 
 export type ChangelogCategory = Extract<ParsedCategory, { type: 'changelog' }>
 export type VersionResolverCategory = Extract<
@@ -43,7 +54,11 @@ const matchesValues = (
     case 'all':
       return expected.every((value) => actual.includes(value))
     case 'only':
-      return actual.every((value) => expected.includes(value))
+      // An empty matched set vacuously passes `every`, but `only` should still
+      // require at least one configured match before the condition counts.
+      return (
+        actual.length > 0 && actual.every((value) => expected.includes(value))
+      )
     case 'exactly':
       return (
         actual.length === expected.length &&
@@ -57,6 +72,84 @@ const matchesValues = (
   }
 }
 
+const matchesPullRequestPaths = (
+  condition: ParsedCondition,
+  pullRequest: PullRequestLike,
+) => {
+  if (condition.paths.length === 0) {
+    return true
+  }
+
+  const changedFiles = unique(pullRequest.changedFiles ?? [])
+  if (changedFiles.length === 0) {
+    return false
+  }
+
+  const expectedMatchers = unique(condition.paths).map((path) => ({
+    path,
+    matcher: ignore().add(path),
+  }))
+  const matchesAllConfiguredPaths = expectedMatchers.every(({ matcher }) =>
+    changedFiles.some((file) => matcher.ignores(file)),
+  )
+  const matchesOnlyConfiguredPaths =
+    changedFiles.length > 0 &&
+    changedFiles.every((file) =>
+      expectedMatchers.some(({ matcher }) => matcher.ignores(file)),
+    )
+
+  switch (condition['paths-mode']) {
+    case 'all':
+      return matchesAllConfiguredPaths
+    case 'only':
+      return matchesOnlyConfiguredPaths
+    case 'exactly':
+      return matchesAllConfiguredPaths && matchesOnlyConfiguredPaths
+    default:
+      return changedFiles.some((file) =>
+        expectedMatchers.some(({ matcher }) => matcher.ignores(file)),
+      )
+  }
+}
+
+const parseConventionalTitle = (title?: string) => {
+  if (!title) return undefined
+
+  const parsed = conventionalParser.parse(title)
+  if (typeof parsed.type !== 'string') return undefined
+
+  return {
+    type: parsed.type,
+    scope: typeof parsed.scope === 'string' ? parsed.scope : undefined,
+    // By default, only breaking changes are added to notes
+    // see https://conventional-changelog.js.org/commits-parser/#breaking-changes-and-notes
+    breaking: parsed.notes.length > 0,
+  }
+}
+
+const matchesConventionalTitle = (
+  condition: ParsedCondition,
+  pullRequest: PullRequestLike,
+) => {
+  if (!condition.conventional) {
+    return true
+  }
+
+  const parsed = parseConventionalTitle(pullRequest.title)
+  if (!parsed) {
+    return false
+  }
+
+  const { types, scopes, breaking } = condition.conventional
+
+  return (
+    (types.length === 0 || types.includes(parsed.type)) &&
+    (scopes.length === 0 ||
+      (parsed.scope !== undefined && scopes.includes(parsed.scope))) &&
+    (breaking === undefined || breaking === parsed.breaking)
+  )
+}
+
 export const matchesCategoryCondition = (
   condition: ParsedCondition,
   pullRequest: PullRequestLike,
@@ -66,11 +159,8 @@ export const matchesCategoryCondition = (
     condition.labels,
     condition['labels-mode'],
   ) &&
-  matchesValues(
-    pullRequest.matchedPaths ?? [],
-    condition.paths,
-    condition['paths-mode'],
-  )
+  matchesPullRequestPaths(condition, pullRequest) &&
+  matchesConventionalTitle(condition, pullRequest)
 
 export const matchesCategory = (
   category: ParsedCategory,
@@ -109,66 +199,14 @@ export const filterPullRequestsByPreCategories = <Pr extends PullRequestLike>(
   })
 }
 
-export const getConfiguredPathPatterns = (
+/**
+ * Determines if any of the categories require loading pull request changed files.
+ */
+export const needsPullRequestChangedFiles = (
   categories: ParsedConfig['categories'],
 ) =>
-  unique(
-    categories.flatMap((category) =>
-      category.when.flatMap((condition) => condition.paths),
-    ),
-  )
-
-export const getPreIncludePathPatterns = (
-  categories: ParsedConfig['categories'],
-) =>
-  unique(
-    categories
-      .filter((category) => category.type === 'pre-include')
-      .flatMap((category) =>
-        category.when.flatMap((condition) => condition.paths),
-      ),
-  )
-
-export const canUsePreIncludePathPrefilter = (
-  categories: ParsedConfig['categories'],
-) => {
-  const preIncludeCategories = categories.filter(
-    (category) => category.type === 'pre-include',
-  )
-
-  return (
-    preIncludeCategories.length > 0 &&
-    preIncludeCategories.every(
-      (category) =>
-        category.when.length > 0 &&
-        category.when.every((condition) => condition.paths.length > 0),
-    )
-  )
-}
-
-export const getSafePreExcludePathPatterns = (
-  categories: ParsedConfig['categories'],
-) =>
-  unique(
-    categories
-      .filter((category) => category.type === 'pre-exclude')
-      .flatMap((category) => category.when)
-      .filter(
-        (condition) =>
-          // Optimization: exclude commits before full PR/category evaluation, but
-          // only when one matched path is enough to prove the pre-exclude condition.
-          // That is true for path-only conditions with `paths-mode: any`.
-          // `all`/`only`/`exactly` need the full set of matched path patterns, so
-          // using this shortcut there could exclude commits too early.
-          condition.paths.length > 0 &&
-          condition['paths-mode'] === 'any' &&
-          condition.labels.length === 0 &&
-          // No labels are configured above, so labels-mode is inert here; keep the
-          // historically safe modes rather than broadening the shortcut's scope.
-          (condition['labels-mode'] === 'any' ||
-            condition['labels-mode'] === 'all'),
-      )
-      .flatMap((condition) => condition.paths),
+  categories.some((category) =>
+    category.when.some((condition) => condition.paths.length > 0),
   )
 
 export const getChangelogCategories = (

@@ -9,6 +9,7 @@ import {
   mocks,
   nockGetAndPatchReleases,
   nockGetAndPostReleases,
+  nockGetPrFiles,
   nockGetReleases,
 } from '#tests/mocks/index.ts'
 
@@ -18,6 +19,20 @@ describe('drafter e2e', () => {
       it('creates a release draft targeting that branch', async () => {
         await mockContext('push')
         mocks.config.mockReturnValue('config')
+        mocks.getContextsConfigWasFetchedFrom.mockReturnValue([
+          {
+            filepath: '.github/release-drafter.yml',
+            scheme: 'github',
+            ref: 'master',
+            repo: { owner: 'toolmantim', repo: 'release-drafter' },
+          },
+          {
+            filepath: '.github/release-drafter-base.yml',
+            scheme: 'github',
+            ref: undefined,
+            repo: { owner: 'toolmantim', repo: '.github' },
+          },
+        ])
 
         const gqlScope = mockGraphqlQuery({
           payload: 'graphql-comparison-no-prs',
@@ -39,10 +54,18 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
+        expect(
+          mocks.core.info.mock.calls
+            .flat()
+            .filter((message) => message.startsWith('Config fetched')),
+        ).toEqual([
+          'Config fetched from "toolmantim/release-drafter/.github/release-drafter.yml@master".',
+          'Config fetched from "toolmantim/.github/.github/release-drafter-base.yml" on the default branch.',
+        ])
 
         expect(scope.isDone()).toBe(true) // should call the mocked endpoints
         expect(gqlScope.pendingMocks().length).toBe(0) // should call the mocked endpoints
@@ -75,7 +98,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/some-branch",
+              "target_commitish": "some-branch",
             },
           ]
         `)
@@ -96,6 +119,23 @@ describe('drafter e2e', () => {
         })
 
         const scope = nockGetAndPostReleases({ fetchedReleases: ['release'] })
+        const tagScope = nock('https://api.github.com')
+          .post(
+            '/graphql',
+            (body) =>
+              body.query.includes('query resolveCommitish') &&
+              body.variables.expression === 'refs/tags/v1.0.0^{commit}',
+          )
+          .reply(200, {
+            data: {
+              repository: {
+                object: {
+                  __typename: 'Commit',
+                  oid: '1496a1f82f32f240f7cbe1a42eb0b0c7a06a5093',
+                },
+              },
+            },
+          })
 
         await runDrafter()
 
@@ -115,12 +155,13 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "",
+              "target_commitish": "1496a1f82f32f240f7cbe1a42eb0b0c7a06a5093",
             },
           ]
         `)
 
         expect(scope.pendingMocks().length).toBe(0) // should call the mocked endpoints
+        expect(tagScope.pendingMocks().length).toBe(0)
         expect(gqlScope.pendingMocks().length).toBe(0) // should call the mocked endpoints
         expect(mocks.core.setFailed).not.toHaveBeenCalled()
       })
@@ -164,7 +205,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -205,7 +246,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -244,7 +285,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/some-branch",
+              "target_commitish": "some-branch",
             },
           ]
         `)
@@ -276,7 +317,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -313,7 +354,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -351,7 +392,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -389,7 +430,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -423,7 +464,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -455,7 +496,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -489,7 +530,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -526,7 +567,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -559,7 +600,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -601,7 +642,7 @@ describe('drafter e2e', () => {
               "name": "v3.0.0-beta",
               "prerelease": false,
               "tag_name": "v3.0.0-beta",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -650,7 +691,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -697,7 +738,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -746,7 +787,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -791,7 +832,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -836,7 +877,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -885,7 +926,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -933,7 +974,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -974,7 +1015,7 @@ describe('drafter e2e', () => {
               "name": "v1.5.0",
               "prerelease": false,
               "tag_name": "v1.5.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1016,7 +1057,7 @@ describe('drafter e2e', () => {
               "name": "v1.5.0",
               "prerelease": false,
               "tag_name": "v1.5.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1084,7 +1125,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1120,7 +1161,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1152,7 +1193,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1180,7 +1221,7 @@ describe('drafter e2e', () => {
               "name": "v2.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1208,7 +1249,7 @@ describe('drafter e2e', () => {
               "name": "v3 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v3",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1257,7 +1298,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter v2.0.1",
                 "prerelease": false,
                 "tag_name": "v2.0.1",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1307,7 +1348,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter v2.0",
                 "prerelease": false,
                 "tag_name": "v2.0",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1355,7 +1396,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter v3",
                 "prerelease": false,
                 "tag_name": "v3",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1402,7 +1443,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter vMajor: 2, Minor: 0, Patch: 1, Prerelease: ",
                 "prerelease": false,
                 "tag_name": "vMajor: 2, Minor: 0, Patch: 1, Prerelease: ",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1452,7 +1493,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter v2.0.1",
                 "prerelease": true,
                 "tag_name": "v2.0.1",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1502,7 +1543,7 @@ describe('drafter e2e', () => {
                 "name": "Release Drafter v2.0.1-beta.0",
                 "prerelease": true,
                 "tag_name": "v2.0.1-beta.0",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1535,7 +1576,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1564,7 +1605,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1594,7 +1635,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1623,7 +1664,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1655,7 +1696,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1693,7 +1734,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1730,7 +1771,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1767,7 +1808,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1802,7 +1843,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1830,7 +1871,7 @@ describe('drafter e2e', () => {
 
             * Add documentation (#28) @jetersen
             * Update dependencies (#27) @jetersen
-            * Bug fixes (#25) @jetersen
+            * Bug fixes (#25) @jetersen, @TimonVS
             * Add big feature (#24) @jetersen
             * Add alien technology (#23) @jetersen
             * Add documentation (#5) @TimonVS
@@ -1842,7 +1883,7 @@ describe('drafter e2e', () => {
                 "name": "",
                 "prerelease": false,
                 "tag_name": "",
-                "target_commitish": "refs/heads/master",
+                "target_commitish": "master",
               },
             ]
           `)
@@ -1897,7 +1938,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1935,7 +1976,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -1987,7 +2028,7 @@ describe('drafter e2e', () => {
             "name": "",
             "prerelease": false,
             "tag_name": "",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
@@ -2039,7 +2080,7 @@ describe('drafter e2e', () => {
             "name": "",
             "prerelease": false,
             "tag_name": "",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
@@ -2050,61 +2091,29 @@ describe('drafter e2e', () => {
   })
 
   describe('with include-paths config', () => {
-    it('returns all PRs when not path filtered', async () => {
-      await mockContext('push')
-      mocks.config.mockReturnValue('config-with-include-paths')
-      const scope = nockGetAndPostReleases({
-        fetchedReleases: ['release'],
-      })
-      const gqlScope = mockGraphqlQuery([
-        {
-          query: 'query findCommitsInComparison',
-          payload: 'graphql-comparison-merge-commit',
-        },
-        {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-include-null-path-merge-commit',
-        },
-      ])
-      await runDrafter()
-      expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
-        [
-          {
-            "body": "# What's Changed
-        * Add documentation (#5) @TimonVS
-        * Update dependencies (#4) @TimonVS
-        * Bug fixes (#3) @TimonVS
-        * Add big feature (#2) @TimonVS
-        * 👽 Add alien technology (#1) @TimonVS
-        ",
-            "draft": true,
-            "make_latest": "true",
-            "name": "v2.0.1 (Code name: Placeholder)",
-            "prerelease": false,
-            "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
-          },
-        ]
-      `)
-      expect(scope.isDone()).toBe(true) // should call the mocked endpoints
-      expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
-      expect(mocks.core.setFailed).not.toHaveBeenCalled()
-    })
-
     it('returns the modified paths', async () => {
       await mockContext('push')
       mocks.config.mockReturnValue('config-with-include-paths')
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
+      const fileScopes = nockGetPrFiles({
+        repo: {
+          owner: 'toolmantim',
+          repo: 'release-drafter-test-project',
+        },
+        entries: [
+          [1, ['src/1.md']],
+          [2, ['src/2.md']],
+          [3, ['src/3.md']],
+          [4, ['src/4.md', 'some/path']],
+          [5, ['src/5.md', 'some/path']],
+        ],
+      })
       const gqlScope = mockGraphqlQuery([
         {
           query: 'query findCommitsInComparison',
           payload: 'graphql-comparison-merge-commit',
-        },
-        {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-include-path-src-5.md-merge-commit',
         },
       ])
       await runDrafter()
@@ -2119,11 +2128,12 @@ describe('drafter e2e', () => {
             "name": "v2.0.1 (Code name: Placeholder)",
             "prerelease": false,
             "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
       expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(fileScopes.every((fileScope) => fileScope.isDone())).toBe(true)
       expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
@@ -2134,14 +2144,23 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
+      const fileScopes = nockGetPrFiles({
+        repo: {
+          owner: 'toolmantim',
+          repo: 'release-drafter-test-project',
+        },
+        entries: [
+          [1, ['src/1.md']],
+          [2, ['src/2.md']],
+          [3, ['src/3.md']],
+          [4, ['src/4.md', 'some/path']],
+          [5, ['src/5.md', 'some/path']],
+        ],
+      })
       const gqlScope = mockGraphqlQuery([
         {
           query: 'query findCommitsInComparison',
           payload: 'graphql-comparison-merge-commit',
-        },
-        {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-exclude-path-merge-commit',
         },
       ])
       await runDrafter()
@@ -2158,11 +2177,12 @@ describe('drafter e2e', () => {
             "name": "v2.0.1 (Code name: Placeholder)",
             "prerelease": false,
             "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
       expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(fileScopes.every((fileScope) => fileScope.isDone())).toBe(true)
       expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
@@ -2173,14 +2193,23 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
+      const fileScopes = nockGetPrFiles({
+        repo: {
+          owner: 'toolmantim',
+          repo: 'release-drafter-test-project',
+        },
+        entries: [
+          [1, ['src/1.md']],
+          [2, ['src/2.md']],
+          [3, ['src/3.md']],
+          [4, ['src/4.md', 'some/path']],
+          [5, ['src/5.md', 'some/path']],
+        ],
+      })
       const gqlScope = mockGraphqlQuery([
         {
           query: 'query findCommitsInComparison',
           payload: 'graphql-comparison-merge-commit',
-        },
-        {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-include-path-src-5.md-merge-commit',
         },
       ])
       await runDrafter()
@@ -2195,11 +2224,12 @@ describe('drafter e2e', () => {
             "name": "v2.0.1 (Code name: Placeholder)",
             "prerelease": false,
             "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
       expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(fileScopes.every((fileScope) => fileScope.isDone())).toBe(true)
       expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
@@ -2212,14 +2242,23 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
+      const fileScopes = nockGetPrFiles({
+        repo: {
+          owner: 'toolmantim',
+          repo: 'release-drafter-test-project',
+        },
+        entries: [
+          [1, ['src/1.md']],
+          [2, ['src/2.md']],
+          [3, ['src/3.md']],
+          [4, ['src/4.md', 'some/path']],
+          [5, ['src/5.md', 'some/path']],
+        ],
+      })
       const gqlScope = mockGraphqlQuery([
         {
           query: 'query findCommitsInComparison',
           payload: 'graphql-comparison-merge-commit',
-        },
-        {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-include-path-src-5.md-merge-commit',
         },
       ])
       await runDrafter()
@@ -2234,11 +2273,12 @@ describe('drafter e2e', () => {
             "name": "v2.0.1 (Code name: Placeholder)",
             "prerelease": false,
             "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
       expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+      expect(fileScopes.every((fileScope) => fileScope.isDone())).toBe(true)
       expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
@@ -2409,7 +2449,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.1.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2440,7 +2480,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.1.1-alpha",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2471,7 +2511,7 @@ describe('drafter e2e', () => {
               "name": "v1.0.0-beta (Code name: Hello World)",
               "prerelease": false,
               "tag_name": "v1.0.0-RC1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2502,7 +2542,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.1-alpha (Code name: Foxtrot Unicorn)",
               "prerelease": false,
               "tag_name": "v2.1.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2536,7 +2576,7 @@ describe('drafter e2e', () => {
               "name": "v1.0.0-RC1 (Code name: Hello World)",
               "prerelease": false,
               "tag_name": "v1.0.0-beta",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2568,7 +2608,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.1.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2599,7 +2639,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 (Code name: Placeholder)",
               "prerelease": true,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2628,7 +2668,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1-alpha.0",
               "prerelease": true,
               "tag_name": "v2.0.1-alpha.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2660,7 +2700,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1-beta.0",
               "prerelease": true,
               "tag_name": "v2.0.1-beta.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2691,7 +2731,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 (Code name: Placeholder)",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2720,7 +2760,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2752,7 +2792,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 (Code name: Placeholder)",
               "prerelease": true,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2783,7 +2823,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": true,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2814,7 +2854,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2844,7 +2884,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": true,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2874,7 +2914,7 @@ describe('drafter e2e', () => {
               "name": "",
               "prerelease": false,
               "tag_name": "",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2906,7 +2946,7 @@ describe('drafter e2e', () => {
               "name": "Foxtrot Unicorn",
               "prerelease": false,
               "tag_name": "v2.1.1-foxtrot-unicorn-alpha",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -2962,7 +3002,7 @@ describe('drafter e2e', () => {
               "name": "v1.0.2 🌈",
               "prerelease": false,
               "tag_name": "v1.0.2",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3004,7 +3044,7 @@ describe('drafter e2e', () => {
               "name": "v1.0.2 🌈",
               "prerelease": false,
               "tag_name": "v1.0.2",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3054,10 +3094,10 @@ describe('drafter e2e', () => {
           ",
               "draft": true,
               "make_latest": "true",
-              "name": "v0.1.0 🌈",
+              "name": "v0.0.1 🌈",
               "prerelease": false,
-              "tag_name": "v0.1.0",
-              "target_commitish": "refs/heads/master",
+              "tag_name": "v0.0.1",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3098,7 +3138,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1 🌈",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3134,7 +3174,7 @@ describe('drafter e2e', () => {
               "name": "static-tag-prefix-v2.1.4 🌈",
               "prerelease": false,
               "tag_name": "static-tag-prefix-v2.1.4",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3164,7 +3204,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.0",
               "prerelease": false,
               "tag_name": "v2.1.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3194,7 +3234,7 @@ describe('drafter e2e', () => {
               "name": "v2.0.1",
               "prerelease": false,
               "tag_name": "v2.0.1",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3224,7 +3264,7 @@ describe('drafter e2e', () => {
               "name": "v2.1.0",
               "prerelease": false,
               "tag_name": "v2.1.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3254,7 +3294,7 @@ describe('drafter e2e', () => {
               "name": "v3.0.0",
               "prerelease": false,
               "tag_name": "v3.0.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3284,7 +3324,7 @@ describe('drafter e2e', () => {
               "name": "v3.0.0",
               "prerelease": false,
               "tag_name": "v3.0.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3316,7 +3356,7 @@ describe('drafter e2e', () => {
               "name": "v3.0.0",
               "prerelease": false,
               "tag_name": "v3.0.0",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3395,7 +3435,7 @@ describe('drafter e2e', () => {
               "name": "v3.0.0-beta",
               "prerelease": false,
               "tag_name": "v3.0.0-beta",
-              "target_commitish": "refs/heads/master",
+              "target_commitish": "master",
             },
           ]
         `)
@@ -3407,6 +3447,98 @@ describe('drafter e2e', () => {
   })
 
   describe('dry-run', () => {
+    describe('with a pull request merge ref', () => {
+      it('forces output-only mode, disables publishing, and warns when dry-run is not enabled', async () => {
+        await mockContext('push')
+        await mockInput('commitish', 'refs/pull/123/merge')
+        await mockInput('publish', 'true')
+        mocks.config.mockReturnValue('config')
+
+        const gqlScope = mockGraphqlQuery({
+          payload: 'graphql-comparison-no-prs',
+        })
+        const pullRequestScope = nock('https://api.github.com')
+          .post(
+            '/graphql',
+            (body) =>
+              body.query.includes('query resolvePullRequestCommitish') &&
+              body.variables.number === 123,
+          )
+          .reply(200, {
+            data: {
+              repository: {
+                pullRequest: {
+                  headRefOid: '1111111111111111111111111111111111111111',
+                  mergeCommit: null,
+                  potentialMergeCommit: {
+                    oid: '2222222222222222222222222222222222222222',
+                  },
+                },
+              },
+            },
+          })
+        const scope = nockGetReleases({ releaseFiles: ['release'] })
+
+        await runDrafter()
+
+        expect(mocks.postReleaseBody).not.toHaveBeenCalled()
+        expect(mocks.core.warning).toHaveBeenCalledWith(
+          'refs/pull/123/merge points to an ephemeral pull request merge commit; forcing dry-run mode and disabling publish. Set dry-run: true explicitly to suppress this warning.',
+        )
+        expect(
+          mocks.core.info.mock.calls
+            .flat()
+            .some(
+              (message) =>
+                message.includes('[dry-run]') &&
+                message.includes('"draft": true'),
+            ),
+        ).toBe(true)
+        expect(scope.isDone()).toBe(true)
+        expect(gqlScope.pendingMocks()).toHaveLength(0)
+        expect(pullRequestScope.pendingMocks()).toHaveLength(0)
+        expect(mocks.core.setFailed).not.toHaveBeenCalled()
+      })
+
+      it('does not warn when dry-run is explicitly enabled', async () => {
+        await mockContext('push')
+        await mockInput('commitish', 'refs/pull/123/merge')
+        await mockInput('dry-run', 'true')
+        mocks.config.mockReturnValue('config')
+
+        const gqlScope = mockGraphqlQuery({
+          payload: 'graphql-comparison-no-prs',
+        })
+        const pullRequestScope = nock('https://api.github.com')
+          .post('/graphql', (body) =>
+            body.query.includes('query resolvePullRequestCommitish'),
+          )
+          .reply(200, {
+            data: {
+              repository: {
+                pullRequest: {
+                  headRefOid: '1111111111111111111111111111111111111111',
+                  mergeCommit: null,
+                  potentialMergeCommit: {
+                    oid: '2222222222222222222222222222222222222222',
+                  },
+                },
+              },
+            },
+          })
+        const scope = nockGetReleases({ releaseFiles: ['release'] })
+
+        await runDrafter()
+
+        expect(mocks.postReleaseBody).not.toHaveBeenCalled()
+        expect(mocks.core.warning).not.toHaveBeenCalled()
+        expect(scope.isDone()).toBe(true)
+        expect(gqlScope.pendingMocks()).toHaveLength(0)
+        expect(pullRequestScope.pendingMocks()).toHaveLength(0)
+        expect(mocks.core.setFailed).not.toHaveBeenCalled()
+      })
+    })
+
     describe('when no existing draft release exists (create)', () => {
       it('does not perform any write operations, logs the payload, and sets computed outputs', async () => {
         await mockContext('push')
@@ -3501,7 +3633,7 @@ describe('drafter e2e', () => {
             "name": "",
             "prerelease": false,
             "tag_name": "",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
@@ -3511,9 +3643,6 @@ describe('drafter e2e', () => {
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
 
-    // the OID set used to gate recovery must be built AFTER path
-    // filtering, otherwise the safety net recovers PRs whose merge commit was
-    // excluded by include-paths/exclude-paths.
     it('respects include-paths when recovering missing PRs', async () => {
       await mockContext('push')
       mocks.config.mockReturnValue('config-with-include-paths')
@@ -3524,16 +3653,22 @@ describe('drafter e2e', () => {
           payload: 'graphql-comparison-missing-pr-with-paths',
         },
         {
-          query: 'query findCommitsWithPathChangesQuery',
-          payload: 'graphql-include-path-missing-pr',
-        },
-        {
           query: 'query findRecentMergedPullRequests',
           payload: 'graphql-recent-merged-prs-with-paths',
         },
       ])
 
       const scope = nockGetAndPostReleases({ fetchedReleases: ['release'] })
+      const fileScopes = nockGetPrFiles({
+        repo: {
+          owner: 'toolmantim',
+          repo: 'release-drafter-test-project',
+        },
+        entries: [
+          [100, ['src/5.md']],
+          [101, ['other/file.md']],
+        ],
+      })
 
       await runDrafter()
 
@@ -3548,12 +3683,13 @@ describe('drafter e2e', () => {
             "name": "v2.0.1 (Code name: Placeholder)",
             "prerelease": false,
             "tag_name": "v2.0.1",
-            "target_commitish": "refs/heads/master",
+            "target_commitish": "master",
           },
         ]
       `)
 
       expect(scope.isDone()).toBe(true)
+      expect(fileScopes.every((fileScope) => fileScope.isDone())).toBe(true)
       expect(gqlScope.pendingMocks().length).toBe(0)
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })

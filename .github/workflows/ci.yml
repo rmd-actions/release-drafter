@@ -16,7 +16,7 @@ jobs:
     if: github.event_name == 'pull_request'
 
     steps:
-      - name: "Check for type: label"
+      - name: "Check for type: or dependencies label"
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -24,10 +24,10 @@ jobs:
           # Fetch at runtime so that re-running a failed workflow 
           # after adding a label will pick up the newly added label.
           LABELS=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" --jq '.[].name')
-          if echo "$LABELS" | grep -qE '^type: '; then
-            echo "PR has a valid 'type: ' label."
+          if echo "$LABELS" | grep -qE '^type: |^dependencies$'; then
+            echo "PR has a valid label."
           else
-            echo "Error: PR must have at least one label starting with 'type: '."
+            echo "Error: PR must have a 'dependencies' label or at least one label starting with 'type: '."
             exit 1
           fi
 
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - uses: ./
         with:
@@ -49,7 +49,7 @@ jobs:
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - uses: ./autolabeler
         with:
@@ -61,9 +61,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -91,9 +91,9 @@ jobs:
       COVERAGE_THRESHOLD: '90'
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           cache: npm

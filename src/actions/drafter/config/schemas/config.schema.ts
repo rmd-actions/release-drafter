@@ -2,9 +2,11 @@ import type * as z from 'zod'
 import {
   array,
   boolean,
+  literal,
   number,
   object,
   string,
+  union,
   ZodDefault,
   enum as zenum,
 } from 'zod'
@@ -15,6 +17,25 @@ import { commonConfigSchema } from './common-config.schema.ts'
  * All specified predicates must be satisfied for a change to match.
  */
 const changeConditionSchema = object({
+  /**
+   * Conventional commit predicate: matches a change whose title or message
+   * follows the conventional commit shape, e.g. `feat(api)!: add endpoint`.
+   */
+  conventional: union([
+    literal(true),
+    object({
+      /** Shorthand for one `types` entry. */
+      type: string().min(1).optional(),
+      /** Conventional commit types to match, e.g. `feat` or `fix`. */
+      types: array(string().min(1)).optional().default([]),
+      /** Shorthand for one `scopes` entry. */
+      scope: string().min(1).optional(),
+      /** Conventional commit scopes to match, e.g. `api` or `ui`. */
+      scopes: array(string().min(1)).optional().default([]),
+      /** Match titles with (`true`) or without (`false`) a breaking `!`. */
+      breaking: boolean().optional(),
+    }),
+  ]).optional(),
   /**
    * Label predicate: matches a change that carries this label.
    *
@@ -54,8 +75,8 @@ const changeConditionSchema = object({
    * Same as specifying a single `paths` value.
    * If `path` and `paths` are both specified, they are combined.
    *
-   * Use `paths-mode` to configure how this path is matched against the matched
-   * configured path patterns for a change.
+   * Use `paths-mode` to configure how this path is matched against the pull
+   * request's changed files.
    */
   path: string().min(1).optional(),
   /**
@@ -66,7 +87,7 @@ const changeConditionSchema = object({
    * `paths-mode` is applied.
    *
    * Use `paths-mode` to configure how these path patterns are compared to the
-   * matched configured path patterns for a change.
+   * pull request's changed files.
    */
   paths: array(string().min(1)).optional().default([]),
   /**
@@ -76,10 +97,11 @@ const changeConditionSchema = object({
    *
    * The comparison is set-based (path order is ignored).
    *
-   * - `any`: At least one configured path pattern matched the change.
-   * - `all`: Every configured path pattern matched the change.
-   * - `only`: Every matched configured path pattern is included in the condition.
-   * - `exactly`: The set of matched configured path patterns equals the condition.
+   * - `any`: At least one changed file matched a configured path pattern.
+   * - `all`: Every configured path pattern matched at least one changed file.
+   * - `only`: Every changed file matched a configured path pattern.
+   * - `exactly`: Every changed file matched a configured path pattern and every
+   *   configured path pattern matched at least one changed file.
    */
   'paths-mode': zenum(['any', 'all', 'only', 'exactly'])
     .optional()
@@ -221,7 +243,19 @@ export const exclusiveConfigSchema = object({
    */
   'change-template': string()
     .optional()
-    .default('* $TITLE (#$NUMBER) @$AUTHOR'),
+    .default('* $TITLE (#$NUMBER) $AUTHORS'),
+  /**
+   * The template to use for each author in `$AUTHORS`.
+   */
+  'change-author-template': string().optional().default('$AUTHOR_MENTION'),
+  /**
+   * The separator to use between authors in `$AUTHORS`.
+   */
+  'change-authors-separator': string().optional().default(', '),
+  /**
+   * An optional separator to use before the final author in `$AUTHORS`.
+   */
+  'change-authors-final-separator': string().optional(),
   /**
    * Characters to escape in `$TITLE` when inserting into `change-template` so that they are not interpreted as Markdown format characters.
    */
@@ -271,15 +305,19 @@ export const exclusiveConfigSchema = object({
    * Exclude changes from the release notes if they modified any of the paths in this array.
    * Supports files and directories. If used with `include-paths`, the exclusion takes precedence.
    *
-   * @deprecated This field keeps legacy commit-level filtering semantics. A
-   * `type: pre-exclude` category with `when.paths` filters at the change level
-   * instead and is not fully equivalent.
+   * @deprecated Use a `type: pre-exclude` category with `when.paths` instead.
    */
   'exclude-paths': array(string()).optional().default([]),
   /**
    * Exclude specific usernames from the generated `$CONTRIBUTORS` variable.
    */
   'exclude-contributors': array(string()).optional().default([]),
+  /**
+   * The template to use for each new contributor in `$NEW_CONTRIBUTORS`.
+   */
+  'new-contributor-template': string()
+    .optional()
+    .default('* $AUTHOR_MENTION made their first contribution in #$NUMBER'),
   /**
    * The template to use for `$CONTRIBUTORS` when there's no contributors to list.
    */
