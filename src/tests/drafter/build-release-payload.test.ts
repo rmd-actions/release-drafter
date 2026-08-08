@@ -5,6 +5,7 @@ import {
   mergeInputAndConfig,
 } from '#src/actions/drafter/config/index.ts'
 import { generateChangeLog } from '#src/actions/drafter/lib/build-release-payload/generate-changelog.ts'
+import { generateContributorsSentence } from '#src/actions/drafter/lib/build-release-payload/generate-contributors-sentence.ts'
 import { buildReleasePayload } from '#src/actions/drafter/lib/index.ts'
 import { mockContext, mocks as sharedMocks } from '#tests/mocks/index.ts'
 
@@ -16,7 +17,6 @@ describe('generate changelog', () => {
     config = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
       }),
       input: actionInputSchema.parse({
         token: 'test',
@@ -141,7 +141,6 @@ describe('generate changelog', () => {
     const categorizedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         categories: [
           { title: 'Bugs', 'collapse-after': 3, when: { labels: ['bug'] } },
         ],
@@ -178,7 +177,6 @@ describe('generate changelog', () => {
     const categorizedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         categories: [
           { title: 'Bugs', 'collapse-after': 0, when: { labels: ['bug'] } },
         ],
@@ -206,7 +204,6 @@ describe('generate changelog', () => {
     const categorizedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         categories: [
           {
             title: 'Feature',
@@ -232,7 +229,6 @@ describe('generate changelog', () => {
     const categorizedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         categories: [
           { title: 'Bugs', 'collapse-after': -1, when: { labels: ['bug'] } },
         ],
@@ -254,7 +250,6 @@ describe('generate changelog', () => {
     const categorizedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         categories: [
           {
             title: 'Feature',
@@ -301,7 +296,6 @@ describe('generate changelog', () => {
     const excludedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         'exclude-labels': ['bug', 'feature', 'bugfix', 'dependencies'],
       }),
       input: actionInputSchema.parse({
@@ -320,7 +314,6 @@ describe('generate changelog', () => {
     const includedConfig = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
         'include-labels': ['non-existent-label'],
       }),
       input: actionInputSchema.parse({
@@ -344,7 +337,6 @@ describe('build release payload', () => {
     config = mergeInputAndConfig({
       config: configSchema.parse({
         template: '$CHANGES',
-        references: ['master'],
       }),
       input: actionInputSchema.parse({
         token: 'test',
@@ -625,3 +617,132 @@ const pullRequests: Parameters<typeof buildReleasePayload>[0]['pullRequests'] =
       },
     },
   ]
+
+describe('generate contributors sentence', () => {
+  let config: ReturnType<typeof mergeInputAndConfig>
+
+  beforeEach(async () => {
+    await mockContext('push')
+    config = mergeInputAndConfig({
+      config: configSchema.parse({ template: '$CONTRIBUTORS' }),
+      input: actionInputSchema.parse({ token: 'test' }),
+    })
+  })
+
+  const botPullRequest = pullRequests.at(-1)
+  if (!botPullRequest) throw new Error('Missing bot pull request fixture')
+  const ghostPullRequest = pullRequests.at(0)
+  if (!ghostPullRequest) throw new Error('Missing ghost pull request fixture')
+  const userPullRequest = pullRequests.find(
+    (pullRequest) => pullRequest.author?.login === 'jetersen',
+  )
+  if (!userPullRequest) throw new Error('Missing user pull request fixture')
+  const botCommit = {
+    __typename: 'Commit',
+    id: 'commit-id',
+    oid: 'commit-oid',
+    committedDate: '2024-01-01T00:00:00Z',
+    message: 'Update dependencies',
+    author: {
+      __typename: 'GitActor',
+      name: 'dependabot[bot]',
+      user: { __typename: 'User', login: 'dependabot[bot]' },
+    },
+    associatedPullRequests: {
+      __typename: 'PullRequestConnection',
+      nodes: [botPullRequest],
+    },
+  } as Parameters<typeof generateContributorsSentence>[0]['commits'][number]
+
+  it('normalizes and deduplicates bot contributors before rendering', () => {
+    expect(
+      generateContributorsSentence({
+        commits: [botCommit],
+        pullRequests: [userPullRequest, botPullRequest],
+        config,
+      }),
+    ).toBe(
+      '@jetersen and [@dependabot[bot]](https://github.com/apps/dependabot)',
+    )
+  })
+
+  it('sorts users before bots regardless of pull request order', () => {
+    const renovatePullRequest = {
+      ...botPullRequest,
+      number: 10,
+      author: {
+        __typename: 'Bot' as const,
+        login: 'renovate',
+        url: 'https://github.com/apps/renovate',
+      },
+    }
+    const cchanchePullRequest = {
+      ...userPullRequest,
+      number: 11,
+      author: {
+        __typename: 'User' as const,
+        login: 'cchanche',
+        url: 'https://github.com/cchanche',
+      },
+    }
+
+    expect(
+      generateContributorsSentence({
+        commits: [],
+        pullRequests: [
+          renovatePullRequest,
+          userPullRequest,
+          botPullRequest,
+          cchanchePullRequest,
+        ],
+        config,
+      }),
+    ).toBe(
+      '@cchanche, @jetersen, [@dependabot[bot]](https://github.com/apps/dependabot) and [@renovate[bot]](https://github.com/apps/renovate)',
+    )
+  })
+
+  it('renders deleted users as @ghost', () => {
+    expect(
+      generateContributorsSentence({
+        commits: [],
+        pullRequests: [ghostPullRequest],
+        config,
+      }),
+    ).toBe('@ghost')
+  })
+
+  it('excludes contributors whose pull requests are excluded', () => {
+    const skippedPullRequest = {
+      ...botPullRequest,
+      labels: {
+        __typename: 'LabelConnection' as const,
+        nodes: [{ __typename: 'Label' as const, name: 'skip-changelog' }],
+      },
+    }
+    const skippedCommit = {
+      ...botCommit,
+      associatedPullRequests: {
+        __typename: 'PullRequestConnection' as const,
+        nodes: [skippedPullRequest],
+      },
+    }
+    const skipConfig = mergeInputAndConfig({
+      config: configSchema.parse({
+        template: '$CONTRIBUTORS',
+        categories: [
+          { type: 'pre-exclude', when: { label: 'skip-changelog' } },
+        ],
+      }),
+      input: actionInputSchema.parse({ token: 'test' }),
+    })
+
+    expect(
+      generateContributorsSentence({
+        commits: [skippedCommit],
+        pullRequests: [skippedPullRequest],
+        config: skipConfig,
+      }),
+    ).toBe('No contributors')
+  })
+})

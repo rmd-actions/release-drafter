@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type * as z from 'zod'
 import {
   filterPullRequestsByPreCategories,
-  getSafePreExcludePathPatterns,
   matchesCategoryCondition,
 } from '#src/actions/drafter/common/category-matching.ts'
 import { mergeInputAndConfig } from '#src/actions/drafter/config/index.ts'
@@ -27,13 +26,13 @@ type PullRequest = Parameters<
   typeof categorizePullRequests
 >[0]['pullRequests'][number]
 
-const makePullRequest = (labels: string[], matchedPaths: string[] = []) =>
+const makePullRequest = (labels: string[], changedFiles: string[] = []) =>
   ({
     labels: {
       nodes: labels.map((name) => ({ name })),
     },
-    matchedPaths,
-  }) as PullRequest
+    changedFiles,
+  }) as unknown as PullRequest
 
 describe('category model', () => {
   it('supports label and path matching modes in a single condition', () => {
@@ -334,47 +333,75 @@ describe('category model', () => {
     ).toBe(false)
   })
 
-  it('only prefilters pre-exclude paths for paths-mode any', () => {
-    const config = makeParsedConfig([
+  it('does not treat empty labels or paths as a match for mode only', () => {
+    const labelsOnlyConfig = makeParsedConfig([
       {
-        type: 'pre-exclude',
+        title: 'Features',
         when: {
-          paths: ['src/**'],
-          'paths-mode': 'any',
+          labels: ['feature', 'enhancement'],
+          'labels-mode': 'only',
         },
       },
+    ])
+    const pathsOnlyConfig = makeParsedConfig([
       {
-        type: 'pre-exclude',
+        title: 'Source and docs changes',
         when: {
-          paths: ['docs/**', 'guides/**'],
-          'paths-mode': 'all',
-        },
-      },
-      {
-        type: 'pre-exclude',
-        when: {
-          paths: ['tests/**'],
+          paths: ['src/**', 'docs/**'],
           'paths-mode': 'only',
-        },
-      },
-      {
-        type: 'pre-exclude',
-        when: {
-          paths: ['infra/**'],
-          'paths-mode': 'exactly',
-        },
-      },
-      {
-        type: 'pre-exclude',
-        when: {
-          labels: ['skip-release'],
-          paths: ['release/**'],
-          'paths-mode': 'any',
         },
       },
     ])
 
-    expect(getSafePreExcludePathPatterns(config.categories)).toEqual(['src/**'])
+    const labelsOnlyCondition = labelsOnlyConfig.categories[0]?.when[0]
+    const pathsOnlyCondition = pathsOnlyConfig.categories[0]?.when[0]
+
+    expect(labelsOnlyCondition).toBeDefined()
+    expect(pathsOnlyCondition).toBeDefined()
+
+    if (!labelsOnlyCondition || !pathsOnlyCondition) {
+      throw new Error('Expected normalized category conditions')
+    }
+
+    expect(
+      matchesCategoryCondition(labelsOnlyCondition, makePullRequest([])),
+    ).toBe(false)
+    expect(
+      matchesCategoryCondition(pathsOnlyCondition, makePullRequest([], [])),
+    ).toBe(false)
+  })
+
+  it('uses changed files for paths-mode only and exactly', () => {
+    const onlyCondition = {
+      labels: [],
+      'labels-mode': 'any' as const,
+      paths: ['docs/**'],
+      'paths-mode': 'only' as const,
+    }
+    const exactlyCondition = {
+      ...onlyCondition,
+      paths: ['docs/**', 'src/**'],
+      'paths-mode': 'exactly' as const,
+    }
+
+    expect(
+      matchesCategoryCondition(
+        onlyCondition,
+        makePullRequest([], ['docs/readme.md', 'src/index.ts']),
+      ),
+    ).toBe(false)
+    expect(
+      matchesCategoryCondition(
+        onlyCondition,
+        makePullRequest([], ['docs/readme.md', 'docs/index.md']),
+      ),
+    ).toBe(true)
+    expect(
+      matchesCategoryCondition(
+        exactlyCondition,
+        makePullRequest([], ['docs/readme.md', 'src/index.ts']),
+      ),
+    ).toBe(true)
   })
 
   it('applies pre-include and pre-exclude categories before changelog categorization', () => {
