@@ -35,8 +35,11 @@ request being accepted:
 - Keep your change as focused as possible. If there are multiple changes you
   would like to make that are not dependent upon each other, consider submitting
   them as separate pull requests.
-- Write a
-  [convetional commit message](https://www.conventionalcommits.org/en/v1.0.0/).
+- Use a
+  [conventional pull request title](https://www.conventionalcommits.org/en/v1.0.0/),
+  such as `feat: add category matching` or `fix(config): handle missing input`.
+  Release Drafter now uses the pull request title to categorize changes and
+  determine version bumps.
 
 Work in Progress pull requests are also welcome to get feedback early on, or if
 there is something blocked you.
@@ -69,14 +72,15 @@ or opening a new one.
 Run the following command:
 
 ```bash
-git checkout master
+git checkout main
 git pull
-npm version [major | minor | patch] --ignore-scripts=false -m "chore: release v%s"
+npm version [major | minor | patch] --ignore-scripts=false
 ```
 
 > [!IMPORTANT]
 >
-> - You may want the version increment to correspond to the last drafted release.
+> - You may want the version increment to correspond to the last drafted
+>   release.
 > - You can use a version number instead of `major | minor | patch` if needed.
 > - This repository sets `ignore-scripts=true` in `.npmrc`, so the flag above is
 >   required when you want `npm version` to run the release lifecycle scripts.

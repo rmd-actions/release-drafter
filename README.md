@@ -1,8 +1,10 @@
+<!-- markdownlint-disable MD033 -->
+
 <h1 align="center">
   <img src="docs/design/logo.svg" alt="Release Drafter Logo" width="450" />
 </h1>
 
-<p align="center">Drafts your next release notes as pull requests are merged into master.</p>
+<p align="center">Drafts your next release notes as pull requests are merged into your branch(es).</p>
 
 ![CI](https://github.com/release-drafter/release-drafter/actions/workflows/ci.yml/badge.svg)
 ![CodeQL](https://github.com/release-drafter/release-drafter/actions/workflows/codeql-analysis.yml/badge.svg)
@@ -23,7 +25,6 @@ on:
   push:
     branches:
       - main
-      - master
 
 # Permissions for default token (secrets.GITHUB_TOKEN)
 permissions:
@@ -45,7 +46,7 @@ The action requires a configuration file. Default location is
 `.github/release-drafter.yml`, and will be fetched using octokit behind the
 scenes. You do not need to checkout your repository beforehand.
 
-> [!note]  
+> [!note]
 > For advanced scenarios, please read dedicated
 > [Configuration Loading](./docs/configuration-loading.md) article. (ex: dynamic
 > config, extending other files, fetch from another repo, etc...)
@@ -71,34 +72,34 @@ The following is a more complicated configuration, which categorises the changes
 into headings, and automatically suggests the next version number:
 
 ```yml
-name-template: "v$RESOLVED_VERSION 🌈"
-tag-template: "v$RESOLVED_VERSION"
+name-template: 'v$RESOLVED_VERSION 🌈'
+tag-template: 'v$RESOLVED_VERSION'
 categories:
-  - title: "🚀 Features"
+  - title: '🚀 Features'
     semver-increment: minor
     when:
       labels:
-        - "feature"
-        - "enhancement"
-  - title: "🐛 Bug Fixes"
+        - 'feature'
+        - 'enhancement'
+  - title: '🐛 Bug Fixes'
     when:
       labels:
-        - "fix"
-        - "bugfix"
-        - "bug"
-  - title: "🧰 Maintenance"
+        - 'fix'
+        - 'bugfix'
+        - 'bug'
+  - title: '🧰 Maintenance'
     when:
-      label: "chore"
-  - type: "pre-exclude"
+      label: 'chore'
+  - type: 'pre-exclude'
     when:
-      label: "skip-changelog"
-  - type: "version-resolver"
-    semver-increment: "major"
+      label: 'skip-changelog'
+  - type: 'version-resolver'
+    semver-increment: 'major'
     when:
-      label: "major"
-  - type: "version-resolver"
-    semver-increment: "patch"
-change-template: "- $TITLE @$AUTHOR (#$NUMBER)"
+      label: 'major'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
+change-template: '- $TITLE (#$NUMBER) $AUTHORS'
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
 template: |
   ## Changes
@@ -111,48 +112,53 @@ template: |
 You can configure Release Drafter using the following key in your
 `.github/release-drafter.yml` file:
 
-| Key                        | Required | Description                                                                                                                                                                                                                                              |
-| -------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `template`                 | Required | The template for the body of the draft release. Use [template variables](#template-variables) to insert values.                                                                                                                                          |
-| `header`                   | Optional | Will be prepended to `template`. Use [template variables](#template-variables) to insert values.                                                                                                                                                         |
-| `footer`                   | Optional | Will be appended to `template`. Use [template variables](#template-variables) to insert values.                                                                                                                                                          |
-| `category-template`        | Optional | The template to use for each category. Use [category template variables](#category-template-variables) to insert values. Default: `"## $TITLE"`.                                                                                                         |
-| `name-template`            | Optional | The template for the name of the draft release. For example: `"v$NEXT_PATCH_VERSION"`.                                                                                                                                                                   |
-| `tag-template`             | Optional | The template for the tag of the draft release. For example: `"v$NEXT_PATCH_VERSION"`.                                                                                                                                                                    |
-| `tag-prefix`               | Optional | A known prefix used to filter release tags. For matching tags, this prefix is stripped before attempting to parse the version. Default: `""`                                                                                                             |
-| `version-template`         | Optional | The template to use when calculating the next version number for the release. Useful for projects that don't use semantic versioning. Default: `"$MAJOR.$MINOR.$PATCH$PRERELEASE"`                                                                       |
-| `change-template`          | Optional | The template to use for each merged pull request. Use [change template variables](#change-template-variables) to insert values. Default: `"* $TITLE (#$NUMBER) @$AUTHOR"`.                                                                               |
-| `change-title-escapes`     | Optional | Characters to escape in `$TITLE` when inserting into `change-template` so that they are not interpreted as Markdown format characters. Default: `""`                                                                                                     |
-| `no-changes-template`      | Optional | The template to use for when there’s no changes. Default: `"* No changes"`.                                                                                                                                                                              |
-| `references`               | Optional | The references to listen for configuration updates to `.github/release-drafter.yml`. Refer to [References](#references) to learn more about this                                                                                                         |
-| `categories`               | Optional | Define how changes are filtered, grouped, and versioned. Categories support `type`, `when`, `exclusive`, `collapse-after`, and `semver-increment`. Refer to [Categorize Changes](#categorize-changes).                                                   |
-| `exclude-contributors`     | Optional | Exclude specific usernames from the generated `$CONTRIBUTORS` variable. Refer to [Exclude Contributors](#exclude-contributors) to learn more about this option.                                                                                          |
-| `no-contributors-template` | Optional | The template to use for `$CONTRIBUTORS` when there's no contributors to list. Default: `"No contributors"`.                                                                                                                                              |
-| `replacers`                | Optional | Search and replace content in the generated changelog body. Refer to [Replacers](#replacers) to learn more about this option.                                                                                                                            |
-| `sort-by`                  | Optional | Sort changelog by merged_at or title. Can be one of: `merged_at`, `title`. Default: `merged_at`.                                                                                                                                                         |
-| `sort-direction`           | Optional | Sort changelog in ascending or descending order. Can be one of: `ascending`, `descending`. Default: `descending`.                                                                                                                                        |
-| `prerelease`               | Optional | Whether to draft a prerelease, with changes since another prerelease (if applicable). Default `false`.                                                                                                                                                   |
-| `prerelease-identifier`    | Optional | A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both options come from the same config location; explicit action inputs still take precedence. Default `''`. |
-| `include-pre-releases`     | Optional | When looking for the last published release to scan changes up-to, include pre-releases. Has no effect if using `prerelease: true` (already enabled). Default `false`.                                                                                   |
-| `latest`                   | Optional | Mark the release as latest. Only works for published releases. Can be one of: `true`, `false`, `legacy`. Default `true`.                                                                                                                                 |
-| `commitish`                | Optional | The release target, i.e. branch or commit it should point to. Default: the ref that release-drafter runs for, e.g. `refs/heads/master` if configured to run on pushes to `master`.                                                                       |
-| `filter-by-range`          | Optional | Filter releases that satisfies a semver range. Evaluates the tag name againts node's `semver.satisfies()`. Default : `"*"`.                                                                                                                              |
-| `filter-by-commitish`      | Optional | Filter previous releases to consider only those with the target matching `commitish`. Default: `false`.                                                                                                                                                  |
-| `pull-request-limit`       | Optional | Limit for associatedPullRequests API call. Use this when working with long-lived non-default branches. See #1354. Default: `5`                                                                                                                           |
-| `history-limit`            | Optional | Size of the pagination window when walking the repo. Can avoid erratic 502s from Github. Default: `15`                                                                                                                                                   |
+| Key                              | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `template`                       | Required | The template for the body of the draft release. Use [template variables](#template-variables) to insert values.                                                                                                                                                                                                                                                                                                                                                                 |
+| `header`                         | Optional | Will be prepended to `template`. Use [template variables](#template-variables) to insert values.                                                                                                                                                                                                                                                                                                                                                                                |
+| `footer`                         | Optional | Will be appended to `template`. Use [template variables](#template-variables) to insert values.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `category-template`              | Optional | The template to use for each category. Use [category template variables](#category-template-variables) to insert values. Default: `"## $TITLE"`.                                                                                                                                                                                                                                                                                                                                |
+| `name-template`                  | Optional | The template for the name of the draft release. For example: `"v$NEXT_PATCH_VERSION"`.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `tag-template`                   | Optional | The template for the tag of the draft release. For example: `"v$NEXT_PATCH_VERSION"`.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `tag-prefix`                     | Optional | A known prefix used to filter release tags. For matching tags, this prefix is stripped before attempting to parse the version. Default: `""`                                                                                                                                                                                                                                                                                                                                    |
+| `version-template`               | Optional | The template to use when calculating the next version number for the release. Useful for projects that don't use semantic versioning. Default: `"$MAJOR.$MINOR.$PATCH$PRERELEASE"`                                                                                                                                                                                                                                                                                              |
+| `change-template`                | Optional | The template to use for each merged pull request. Use [change template variables](#change-template-variables) to insert values. Default: `"* $TITLE (#$NUMBER) $AUTHORS"`.                                                                                                                                                                                                                                                                                                      |
+| `change-author-template`         | Optional | The template to use for each author in `$AUTHORS`. Supports `$AUTHOR` for the raw login/name and `$AUTHOR_MENTION` for a GitHub-formatted mention. Default: `"$AUTHOR_MENTION"`.                                                                                                                                                                                                                                                                                                |
+| `change-authors-separator`       | Optional | The separator between authors in `$AUTHORS`. Default: `", "`. Use `"\n"` with a list-style `change-author-template` for multiline output.                                                                                                                                                                                                                                                                                                                                       |
+| `change-authors-final-separator` | Optional | A different separator before the final author in `$AUTHORS`, e.g. `" and "` produces `@octocat, @cchanche and @jetersen`. Defaults to `change-authors-separator`.                                                                                                                                                                                                                                                                                                               |
+| `change-title-escapes`           | Optional | Characters to escape in `$TITLE` when inserting into `change-template` so that they are not interpreted as Markdown format characters. Default: `""`                                                                                                                                                                                                                                                                                                                            |
+| `no-changes-template`            | Optional | The template to use for when there’s no changes. Default: `"* No changes"`.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `categories`                     | Optional | Define how changes are filtered, grouped, and versioned. Categories support `type`, `when`, `exclusive`, `collapse-after`, and `semver-increment`. Refer to [Categorize Changes](#categorize-changes).                                                                                                                                                                                                                                                                          |
+| `exclude-contributors`           | Optional | Exclude specific usernames from the generated `$CONTRIBUTORS` variable. Refer to [Exclude Contributors](#exclude-contributors) to learn more about this option.                                                                                                                                                                                                                                                                                                                 |
+| `new-contributor-template`       | Optional | The template to use for each new contributor in `$NEW_CONTRIBUTORS`. Use [new contributor template variables](#new-contributor-template-variables) to insert values. Default: `"* $AUTHOR_MENTION made their first contribution in #$NUMBER"`.                                                                                                                                                                                                                                  |
+| `no-new-contributor-template`    | Optional | The template to use for `$NEW_CONTRIBUTORS` when there are no new contributors to list. Default: `"* No new contributors"`.                                                                                                                                                                                                                                                                                                                                                     |
+| `no-contributors-template`       | Optional | The template to use for `$CONTRIBUTORS` when there's no contributors to list. Default: `"No contributors"`.                                                                                                                                                                                                                                                                                                                                                                     |
+| `replacers`                      | Optional | Search and replace content in the generated changelog body. Refer to [Replacers](#replacers) to learn more about this option.                                                                                                                                                                                                                                                                                                                                                   |
+| `sort-by`                        | Optional | Sort changelog by merged_at or title. Can be one of: `merged_at`, `title`. Default: `merged_at`.                                                                                                                                                                                                                                                                                                                                                                                |
+| `sort-direction`                 | Optional | Sort changelog in ascending or descending order. Can be one of: `ascending`, `descending`. Default: `descending`.                                                                                                                                                                                                                                                                                                                                                               |
+| `prerelease`                     | Optional | Whether to draft a prerelease, with changes since another prerelease (if applicable). Default `false`.                                                                                                                                                                                                                                                                                                                                                                          |
+| `prerelease-identifier`          | Optional | A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both options come from the same config location; explicit action inputs still take precedence. Default `''`.                                                                                                                                                                                                                        |
+| `include-pre-releases`           | Optional | When looking for the last published release to scan changes up-to, include pre-releases. Has no effect if using `prerelease: true` (already enabled). Default `false`.                                                                                                                                                                                                                                                                                                          |
+| `latest`                         | Optional | Mark the release as latest. Only works for published releases. Can be one of: `true`, `false`, `legacy`. Default `true`.                                                                                                                                                                                                                                                                                                                                                        |
+| `commitish`                      | Optional | The release target, i.e. branch, commit SHA, or fully qualified tag or pull request ref it should point to. Tag and pull request refs are resolved to commit SHAs. Pull request merge refs always run in dry-run mode because they point to ephemeral merge commits; set `dry-run: true` explicitly to acknowledge output-only behavior and suppress the warning. Defaults to the branch that release-drafter runs for, e.g. `main` when configured to run on pushes to `main`. |
+| `filter-by-range`                | Optional | Filter releases that satisfies a semver range. Evaluates the tag name againts node's `semver.satisfies()`. Default : `"*"`.                                                                                                                                                                                                                                                                                                                                                     |
+| `filter-by-commitish`            | Optional | Filter previous releases to consider only those with the target matching `commitish`. Default: `false`.                                                                                                                                                                                                                                                                                                                                                                         |
+| `pull-request-limit`             | Optional | Limit for associatedPullRequests API call. Use this when working with long-lived non-default branches. See #1354. Default: `5`                                                                                                                                                                                                                                                                                                                                                  |
+| `history-limit`                  | Optional | Size of the pagination window when walking the repo. Can avoid erratic 502s from Github. Default: `15`                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Template Variables
 
 You can use any of the following variables in your `template`, `header` and
 `footer`:
 
-| Variable        | Description                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `$CHANGES`      | The markdown list of pull requests that have been merged.                                                             |
-| `$CONTRIBUTORS` | A comma separated list of contributors to this release (pull request authors, commit authors, and commit committers). |
-| `$PREVIOUS_TAG` | The previous releases’s tag.                                                                                          |
-| `$REPOSITORY`   | Current Repository                                                                                                    |
-| `$OWNER`        | Current Repository Owner                                                                                              |
+| Variable            | Description                                                                                                           |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `$CHANGES`          | The markdown list of pull requests that have been merged.                                                             |
+| `$CONTRIBUTORS`     | A comma separated list of contributors to this release (pull request authors, commit authors, and commit committers). |
+| `$NEW_CONTRIBUTORS` | A Markdown list of pull request authors making their first contribution and the corresponding pull request.           |
+| `$PREVIOUS_TAG`     | The previous releases’s tag.                                                                                          |
+| `$REPOSITORY`       | Current Repository                                                                                                    |
+| `$OWNER`            | Current Repository Owner                                                                                              |
 
 ## Category Template Variables
 
@@ -209,7 +215,7 @@ You can use any of the following variables in `version-template` to format the
 You may want to use this when producing non semver output.
 
 ```yaml
-version-template: "ver $MAJOR"
+version-template: 'ver $MAJOR'
 ```
 
 > [!IMPORTANT]
@@ -218,7 +224,7 @@ version-template: "ver $MAJOR"
 > versions parseable by semver.coerce() (we enbale `loose` mode)
 >
 > ```ts
-> semver.coerce("ver 1", true); // { version: '1.0.0' }
+> semver.coerce('ver 1', true) // { version: '1.0.0' }
 > ```
 >
 > If you simply want a verbose title for your releases, use the `name-template`
@@ -226,9 +232,9 @@ version-template: "ver $MAJOR"
 
 ## Version Resolver
 
-Any category with `semver-increment` contributes to `$RESOLVED_VERSION`.
-Use `type: version-resolver` categories when you want version resolution rules
-that do not also render a changelog section.
+Any category with `semver-increment` contributes to `$RESOLVED_VERSION`. Use
+`type: version-resolver` categories when you want version resolution rules that
+do not also render a changelog section.
 
 Before version resolution runs, any `pre-include` and `pre-exclude` categories
 filter the candidate pull requests. After that:
@@ -244,20 +250,20 @@ independently for changelog categories and version-resolver categories.
 
 ```yml
 categories:
-  - type: "version-resolver"
-    semver-increment: "major"
+  - type: 'version-resolver'
+    semver-increment: 'major'
     when:
-      label: "major"
-  - type: "version-resolver"
-    semver-increment: "minor"
+      label: 'major'
+  - type: 'version-resolver'
+    semver-increment: 'minor'
     when:
-      label: "minor"
-  - type: "version-resolver"
-    semver-increment: "patch"
+      label: 'minor'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
     when:
-      label: "patch"
-  - type: "version-resolver"
-    semver-increment: "patch"
+      label: 'patch'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
 ```
 
 The example above:
@@ -266,6 +272,18 @@ The example above:
 - uses the category with no `when` as the fallback when nothing else matches
 - picks the highest semver increment across matching categories
 
+## New Contributor Template Variables
+
+You can use any of the following variables in `new-contributor-template`:
+
+| Variable          | Description                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `$AUTHOR`         | The new contributor’s username, e.g. `gracehopper`.                                              |
+| `$AUTHOR_MENTION` | The new contributor’s GitHub mention, e.g. `@gracehopper`.                                       |
+| `$AUTHOR_URL`     | The URL of the new contributor’s GitHub profile, e.g. `https://github.com/gracehopper`.          |
+| `$NUMBER`         | The number of the contributor’s first pull request, e.g. `42`.                                   |
+| `$URL`            | The URL of the contributor’s first pull request, e.g. `https://github.com/octocat/repo/pull/42`. |
+
 ## Change Template Variables
 
 You can use any of the following variables in `change-template`:
@@ -273,30 +291,42 @@ You can use any of the following variables in `change-template`:
 | Variable         | Description                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `$NUMBER`        | The number of the pull request, e.g. `42`.                                                                                                                                                                                                                                                                                                                                             |
+| `$CATEGORY`      | The title of the category that matched the pull request, preserving its configured case. Empty for uncategorized pull requests.                                                                                                                                                                                                                                                        |
 | `$TITLE`         | The title of the pull request, e.g. `Add alien technology`. Any characters excluding @ and # matching `change-title-escapes` will be prepended with a backslash so that they will appear verbatim instead of being interpreted as markdown format characters. @s and #s if present in `change-title-escapes` will be appended with an HTML comment so that they don't become mentions. |
 | `$AUTHOR`        | The pull request author’s username, e.g. `gracehopper`.                                                                                                                                                                                                                                                                                                                                |
+| `$AUTHOR_URL`    | The pull request author’s GitHub profile URL, e.g. `https://github.com/gracehopper`.                                                                                                                                                                                                                                                                                                   |
+| `$AUTHORS`       | The pull request author and its associated commit authors rendered with `change-author-template` and joined with `change-authors-separator`, with the pull request author first.                                                                                                                                                                                                       |
 | `$BODY`          | The body of the pull request e.g. `Fixed spelling mistake`.                                                                                                                                                                                                                                                                                                                            |
 | `$URL`           | The URL of the pull request e.g. `https://github.com/octocat/repo/pull/42`.                                                                                                                                                                                                                                                                                                            |
-| `$BASE_REF_NAME` | The base name of of the base Ref associated with the pull request e.g. `master`.                                                                                                                                                                                                                                                                                                       |
+| `$BASE_REF_NAME` | The base name of of the base Ref associated with the pull request e.g. `main`.                                                                                                                                                                                                                                                                                                         |
 | `$HEAD_REF_NAME` | The head name of the head Ref associated with the pull request e.g. `my-bug-fix`.                                                                                                                                                                                                                                                                                                      |
 
-## References
-
-**Note**: This is only relevant for GitHub app users as `references` is ignored
-when running as GitHub action due to GitHub workflows more powerful
-[`on` conditions](https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions#on)
-
-References takes an list and accepts strings and regex. If none are specified,
-we default to the repository’s default branch usually master.
+For a multiline author list, render each author with `$AUTHOR` and join them
+with a newline:
 
 ```yaml
-references:
-  - master
-  - v.+
+categories:
+  - title: bug
+    when:
+      label: bug
+  - title: todo
+category-template: ''
+change-template: |-
+  - type: $CATEGORY
+    message: |-
+      $TITLE
+    pull: $NUMBER
+    authors:
+      $AUTHORS
+change-author-template: '- $AUTHOR'
+change-authors-separator: "\n    "
 ```
 
-Currently matching against any `ref/heads/` and `ref/tags/` references behind
-the scene
+Use `$AUTHOR_MENTION` instead of `$AUTHOR` in `change-author-template` when
+GitHub mentions are desired. GitHub App bots are rendered as linked mentions,
+for example `[@dependabot[bot]](https://github.com/apps/dependabot)`.
+`$CATEGORY` preserves `categories[].title`; configure the title with the casing
+required by the output.
 
 ## Categorize Changes
 
@@ -313,9 +343,9 @@ pipeline:
 both changelog generation and version resolution.
 
 Categories are evaluated in the order they are defined. By default, a pull
-request can match multiple categories of the same type. Setting `exclusive:
-true` on a `changelog` or `version-resolver` category stops later categories of
-that same type from also matching the same pull request.
+request can match multiple categories of the same type. Setting
+`exclusive: true` on a `changelog` or `version-resolver` category stops later
+categories of that same type from also matching the same pull request.
 
 Each category supports the following keys:
 
@@ -333,54 +363,82 @@ Each category can define a `when` condition as either:
 - a single condition object
 - an array of condition objects, where matching any one condition is enough
 
-Within one condition, label and path predicates are combined with AND logic.
+Within one condition, conventional commit, label, and path predicates are
+combined with AND logic.
 
 The condition keys are:
 
-| Key           | Description                                                                     |
-| ------------- | ------------------------------------------------------------------------------- |
-| `label`       | Shorthand for one `labels` entry.                                               |
-| `labels`      | Label predicates to compare against the pull request labels.                    |
-| `labels-mode` | How the configured labels are matched. Defaults to `any`.                       |
-| `path`        | Shorthand for one `paths` entry.                                                |
-| `paths`       | Glob patterns to compare against the path patterns matched by the pull request. |
-| `paths-mode`  | How the configured paths are matched. Defaults to `any`.                        |
+| Key            | Description                                                                    |
+| -------------- | ------------------------------------------------------------------------------ |
+| `conventional` | Conventional commit predicates to compare against the change title or message. |
+| `label`        | Shorthand for one `labels` entry.                                              |
+| `labels`       | Label predicates to compare against the pull request labels.                   |
+| `labels-mode`  | How the configured labels are matched. Defaults to `any`.                      |
+| `path`         | Shorthand for one `paths` entry.                                               |
+| `paths`        | Glob patterns to compare against the files changed by the change.              |
+| `paths-mode`   | How the configured paths are matched. Defaults to `any`.                       |
 
 ```yml
 categories:
-  - title: "🚀 Features"
-    semver-increment: "minor"
+  - title: '🚀 Features'
+    semver-increment: 'minor'
     when:
-      labels:
-        - "feature"
-        - "enhancement"
-  - title: "🐛 Bug Fixes"
+      - conventional:
+          type: 'feat'
+      - labels:
+          - 'feature'
+          - 'enhancement'
+  - title: '🐛 Bug Fixes'
     when:
       - labels:
-          - "bug"
-          - "fix"
+          - 'bug'
+          - 'fix'
       - labels:
-          - "regression"
+          - 'regression'
         paths:
-          - "src/**"
-  - title: "⬆️ Dependencies"
+          - 'src/**'
+  - title: '⬆️ Dependencies'
     collapse-after: 0
     exclusive: true
     when:
-      label: "dependencies"
-  - type: "pre-exclude"
+      label: 'dependencies'
+  - type: 'pre-exclude'
     when:
-      label: "skip-changelog"
+      label: 'skip-changelog'
 ```
 
 The `labels-mode` and `paths-mode` options control how the configured labels or
 path patterns are compared. `any` is the default. Path matching operates on the
-set of configured path patterns that matched the pull request.
+pull request's changed files.
+
+The `conventional` option parses the pull request title as a conventional commit
+header. Set it to `true` to match any conventional title, or configure
+`type`/`types`, `scope`/`scopes`, and `breaking`:
+
+```yml
+categories:
+  - title: 'Conventional Changes'
+    when:
+      conventional: true
+  - title: '🚀 Features'
+    semver-increment: 'minor'
+    when:
+      conventional:
+        type: 'feat'
+  - title: '💥 Breaking API Changes'
+    semver-increment: 'major'
+    when:
+      conventional:
+        type: 'feat'
+        scope: 'api'
+        breaking: true
+```
 
 Within a condition, `label` is shorthand for a single `labels` entry. If both
 `label` and `labels` are present, they are combined before `labels-mode` is
-applied. With the default `labels-mode: any`, `labels: ["feature",
-"enhancement"]` matches pull requests carrying either label.
+applied. With the default `labels-mode: any`,
+`labels: ["feature", "enhancement"]` matches pull requests carrying either
+label.
 
 Likewise, `path` is shorthand for a single `paths` entry. If both `path` and
 `paths` are present, they are combined before `paths-mode` is applied.
@@ -391,9 +449,6 @@ The available matching modes are:
 - `all`: every configured value matches
 - `only`: every change value is included in the configured set
 - `exactly`: the change values and configured values are the same set
-
-For path conditions, `only` and `exactly` compare against the set of configured
-path patterns that matched the pull request, not against raw changed file paths.
 
 If a condition does not configure any `label`/`labels` or `path`/`paths`, the
 corresponding `*-mode` setting has no effect.
@@ -418,51 +473,49 @@ Optionally you can add a `collapse-after` entry to your category item, if the
 category has more than the defined `collapse-after` pull requests then it will
 show all pull requests collapsed for that category. Setting `collapse-after` to
 `0` will always collapse the category regardless of the number of pull requests,
-and setting it to `-1` disables collapsing.
-Append the `collapse-after` integer to your category as following:
+and setting it to `-1` disables collapsing. Append the `collapse-after` integer
+to your category as following:
 
 ```yml
 categories:
-  - title: "⬆️ Dependencies"
+  - title: '⬆️ Dependencies'
     collapse-after: 3
     when:
-      label: "dependencies"
+      label: 'dependencies'
 ```
 
 ## Exclude Changes
 
-The recommended way to exclude changes is a `type: pre-exclude` category.
-For example, append the following to your
-`.github/release-drafter.yml` file:
+The recommended way to exclude changes is a `type: pre-exclude` category. For
+example, append the following to your `.github/release-drafter.yml` file:
 
 ```yml
 categories:
-  - type: "pre-exclude"
+  - type: 'pre-exclude'
     when:
-      label: "skip-changelog"
+      label: 'skip-changelog'
 ```
 
-Changes with the label "skip-changelog" will now be excluded from the
-release draft.
+Changes with the label "skip-changelog" will now be excluded from the release
+draft.
 
 ## Include Changes
 
-The recommended way to include only a subset of changes is a
-`type: pre-include` category. Only changes that match at least one
-`pre-include` category are kept for the rest of the pipeline. For example,
-append the following to your
+The recommended way to include only a subset of changes is a `type: pre-include`
+category. Only changes that match at least one `pre-include` category are kept
+for the rest of the pipeline. For example, append the following to your
 `.github/release-drafter.yml` file:
 
 ```yml
 categories:
-  - type: "pre-include"
+  - type: 'pre-include'
     when:
       labels:
-        - "app-foo"
+        - 'app-foo'
 ```
 
-Changes with the label "app-foo" will be the only changes included
-in the release draft.
+Changes with the label "app-foo" will be the only changes included in the
+release draft.
 
 ## Exclude Contributors
 
@@ -473,7 +526,7 @@ include yourself, to better highlight only the third-party contributions.
 
 ```yml
 exclude-contributors:
-  - "myusername"
+  - 'myusername'
 ```
 
 ## Replacers
@@ -485,10 +538,10 @@ order.
 ```yml
 replacers:
   - search: '/CVE-(\d{4})-(\d+)/g'
-    replace: "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-$1-$2"
-  - search: "myname"
-    replace: "My Name"
-  - search: "/- ([a-z])/g"
+    replace: 'https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-$1-$2'
+  - search: 'myname'
+    replace: 'My Name'
+  - search: '/- ([a-z])/g'
     replace: '- \u$1' # Uppercase the first letter of each changelog entry
 ```
 
@@ -531,21 +584,21 @@ at least one of the matchers meets the criteria.
 ```yml
 # .github/release-drafter.yml
 autolabeler:
-  - label: "chore"
+  - label: 'chore'
     files:
-      - "*.md"
+      - '*.md'
     branch:
       - '/docs{0,1}\/.+/'
-  - label: "bug"
+  - label: 'bug'
     branch:
       - '/fix\/.+/'
     title:
-      - "/fix/i"
-  - label: "enhancement"
+      - '/fix/i'
+  - label: 'enhancement'
     branch:
       - '/feature\/.+/'
     body:
-      - "/JIRA-[0-9]{1,4}/"
+      - '/JIRA-[0-9]{1,4}/'
 
 # ... rest of release-drafter config
 ```
@@ -584,7 +637,7 @@ jobs:
       - uses: release-drafter/release-drafter@v6
         with:
           prerelease: true
-          prerelease-identifier: "rc" # Use semver identifiers : alpha, beta, rc, etc
+          prerelease-identifier: 'rc' # Use semver identifiers : alpha, beta, rc, etc
 ```
 
 Here, both jobs run in parallel every time you add changes to the configured
@@ -609,7 +662,9 @@ first place, automation may be an acceptable risk for you too.
 > - `prerelease-identifier` is not required when `prerelease` is enabled, but
 >   your prerelease may not be named after / be associated with a tag that is
 >   semver-compliant to an actual prerelease.
-> - when specified, `prerelease-identifier` enables `prerelease: true` if both values come from the same config location; explicit action inputs still take precedence over config file values
+> - when specified, `prerelease-identifier` enables `prerelease: true` if both
+>   values come from the same config location; explicit action inputs still take
+>   precedence over config file values
 
 If you want your stable releases to include changes since the last prerelease
 instead of the last stable release, use `include-pre-releases: true`. This can
@@ -647,7 +702,7 @@ specified in your `release-drafter.yml` config.
 | `prerelease-identifier` | A string indicating an identifier (alpha, beta, rc, etc), to increment the prerelease version. This automatically enables `prerelease` when both options come from the same config location; explicit action inputs still take precedence. Default `''`.                                                                                                           |
 | `include-pre-releases`  | When looking for the last published release to scan changes up-to, include pre-releases. Has no effect if using `prerelease: true` (already enabled). Default `false`.                                                                                                                                                                                             |
 | `latest`                | A string indicating whether the release being created or updated should be marked as latest.                                                                                                                                                                                                                                                                       |
-| `commitish`             | A string specifying the target branch for the release being created.                                                                                                                                                                                                                                                                                               |
+| `commitish`             | The release target: a branch, commit SHA, or fully qualified tag or pull request ref. Tag and pull request refs are resolved to commit SHAs. Pull request merge refs force output-only dry-run mode and disable publishing.                                                                                                                                        |
 | `header`                | A string that would be added before the template body.                                                                                                                                                                                                                                                                                                             |
 | `footer`                | A string that would be added after the template body.                                                                                                                                                                                                                                                                                                              |
 
@@ -676,8 +731,8 @@ Release Drafter creates its GitHub client with
 [`@actions/github.getOctokit()`](https://github.com/actions/toolkit/tree/main/packages/github#readme).
 In GitHub Actions, that client uses the runtime API base URL from
 `GITHUB_API_URL`, so the same workflow can target GHES without extra
-`github.com`-specific configuration, assuming the required REST and GraphQL
-APIs are available on the instance.
+`github.com`-specific configuration, assuming the required REST and GraphQL APIs
+are available on the instance.
 
 ## Contributing
 
