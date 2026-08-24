@@ -2,8 +2,57 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "_extends": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "\\S"
+            },
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "enum": ["override", "append", "prepend"]
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["from"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "change-template": {
-      "default": "* $TITLE (#$NUMBER) @$AUTHOR",
+      "default": "* $TITLE (#$NUMBER) $AUTHORS",
+      "type": "string"
+    },
+    "change-author-template": {
+      "default": "$AUTHOR_MENTION",
+      "type": "string"
+    },
+    "change-authors-separator": {
+      "default": ", ",
+      "type": "string"
+    },
+    "change-authors-final-separator": {
       "type": "string"
     },
     "change-title-escapes": {
@@ -60,6 +109,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "new-contributor-template": {
+      "default": "* $AUTHOR_MENTION made their first contribution in #$NUMBER",
+      "type": "string"
     },
     "no-contributors-template": {
       "default": "No contributors",
