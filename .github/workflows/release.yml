@@ -6,7 +6,6 @@ on:
       - v*.*.*
 
 permissions:
-  id-token: write
   contents: write
 
 jobs:
@@ -14,11 +13,11 @@ jobs:
     if: github.repository == 'release-drafter/release-drafter'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           cache: npm
@@ -26,14 +25,10 @@ jobs:
       - run: npm ci
 
       - name: Run all checks and rebuild artifacts
-        run: npm run all
+        run: npm run ci
 
       - name: Check for clean working directory
         run: npm run check:clean
-
-      - name: Publish
-        if: false # Publishing is currently disabled, see https://github.com/release-drafter/release-drafter/pull/1475#discussion_r2901869066
-        run: npm publish # Publishes to npmjs, using package.json's version
 
       - name: Parse pushed tag version
         id: version
