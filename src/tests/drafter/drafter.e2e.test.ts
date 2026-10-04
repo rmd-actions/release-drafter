@@ -2,7 +2,6 @@ import nock from 'nock'
 import { describe, expect, it } from 'vitest'
 import { runDrafter } from '#tests/helpers/index.ts'
 import {
-  getGqlPayload,
   mockContext,
   mockGraphqlQuery,
   mockInput,
@@ -66,6 +65,20 @@ describe('drafter e2e', () => {
           'Config fetched from "toolmantim/release-drafter/.github/release-drafter.yml@master".',
           'Config fetched from "toolmantim/.github/.github/release-drafter-base.yml" on the default branch.',
         ])
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('id', '11691725')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'html_url',
+          'https://github.com/toolmantim/release-drafter-test-project/releases/tag/v2.0.0',
+        )
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'upload_url',
+          'https://uploads.github.com/repos/toolmantim/release-drafter-test-project/releases/11691725/assets{?name,label}',
+        )
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.0')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'name',
+          'v2.0.0 (✏️ Code Name)',
+        )
 
         expect(scope.isDone()).toBe(true) // should call the mocked endpoints
         expect(gqlScope.pendingMocks().length).toBe(0) // should call the mocked endpoints
@@ -116,6 +129,7 @@ describe('drafter e2e', () => {
 
         const gqlScope = mockGraphqlQuery({
           payload: 'graphql-comparison-merge-commit',
+          suppressRecentPullRequestMock: true,
         })
 
         const scope = nockGetAndPostReleases({ fetchedReleases: ['release'] })
@@ -349,6 +363,41 @@ describe('drafter e2e', () => {
             * Change: #3 'Bug fixes' @TimonVS
             * Change: #2 'Add big feature' @TimonVS
             * Change: #1 '👽 Add alien technology' @TimonVS",
+                "draft": true,
+                "make_latest": "true",
+                "name": "",
+                "prerelease": false,
+                "tag_name": "",
+                "target_commitish": "master",
+              },
+            ]
+          `)
+
+          expect(scope.isDone()).toBe(true) // should call the mocked endpoints
+          expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
+          expect(mocks.core.setFailed).not.toHaveBeenCalled()
+        })
+      })
+
+      describe('with group-changes config', () => {
+        it('creates a new draft with matching changes merged into one entry', async () => {
+          await mockContext('push')
+          mocks.config.mockReturnValue('config-with-group-changes')
+
+          const scope = nockGetAndPostReleases({
+            fetchedReleases: ['release'],
+          })
+          const gqlScope = mockGraphqlQuery({
+            payload: 'graphql-comparison-dependabot-bumps',
+          })
+
+          await runDrafter()
+
+          expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
+            [
+              {
+                "body": "* Bump njord.version from 0.9.1 to 0.9.5 (#308, #310, #316) [@dependabot[bot]](https://github.com/apps/dependabot)
+            * Bump org.codehaus.mojo:versions-maven-plugin from 2.20.1 to 2.21.0 (#309) [@dependabot[bot]](https://github.com/apps/dependabot)",
                 "draft": true,
                 "make_latest": "true",
                 "name": "",
@@ -646,6 +695,20 @@ describe('drafter e2e', () => {
             },
           ]
         `)
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('id', '11691725')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'html_url',
+          'https://github.com/toolmantim/release-drafter-test-project/releases/tag/v2.0.0',
+        )
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'upload_url',
+          'https://uploads.github.com/repos/toolmantim/release-drafter-test-project/releases/11691725/assets{?name,label}',
+        )
+        expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.0')
+        expect(mocks.core.setOutput).toHaveBeenCalledWith(
+          'name',
+          'v2.0.0 (✏️ Code Name)',
+        )
 
         expect(scope.isDone()).toBe(true) // should call the mocked endpoints
         expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
@@ -1904,11 +1967,11 @@ describe('drafter e2e', () => {
         const scope = nockGetAndPostReleases({
           fetchedReleases: ['release'],
         })
-        const gqlScope1 = mockGraphqlQuery({
-          payload: 'graphql-comparison-paginated-1',
-        })
-        const gqlScope2 = mockGraphqlQuery({
-          payload: 'graphql-comparison-paginated-2',
+        const gqlScope = mockGraphqlQuery({
+          payload: [
+            'graphql-comparison-paginated-1',
+            'graphql-comparison-paginated-2',
+          ],
         })
         await runDrafter()
         expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
@@ -1943,8 +2006,7 @@ describe('drafter e2e', () => {
           ]
         `)
         expect(scope.isDone()).toBe(true) // should call the mocked endpoints
-        expect(gqlScope1.isDone()).toBe(true) // should call the mocked endpoints
-        expect(gqlScope2.isDone()).toBe(true) // should call the mocked endpoints
+        expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
         expect(mocks.core.setFailed).not.toHaveBeenCalled()
       })
     })
@@ -1994,11 +2056,11 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
-      const gqlScope1 = mockGraphqlQuery({
-        payload: 'graphql-comparison-paginated-1',
-      })
-      const gqlScope2 = mockGraphqlQuery({
-        payload: 'graphql-comparison-paginated-2',
+      const gqlScope = mockGraphqlQuery({
+        payload: [
+          'graphql-comparison-paginated-1',
+          'graphql-comparison-paginated-2',
+        ],
       })
       await runDrafter()
       expect(mocks.postReleaseBody.mock.lastCall).toMatchInlineSnapshot(`
@@ -2033,8 +2095,7 @@ describe('drafter e2e', () => {
         ]
       `)
       expect(scope.isDone()).toBe(true) // should call the mocked endpoints
-      expect(gqlScope1.isDone()).toBe(true) // should call the mocked endpoints
-      expect(gqlScope2.isDone()).toBe(true) // should call the mocked endpoints
+      expect(gqlScope.isDone()).toBe(true) // should call the mocked endpoints
       expect(mocks.core.setFailed).not.toHaveBeenCalled()
     })
   })
@@ -2291,17 +2352,10 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
-      const gqlScope = nock('https://api.github.com')
-        .post('/graphql', (body) => {
-          if (
-            body.query.includes('query findCommitsInComparison') &&
-            body.variables.pullRequestLimit === 5
-          ) {
-            return true
-          }
-          return false
-        })
-        .reply(200, getGqlPayload('graphql-comparison-no-prs'))
+      const gqlScope = mockGraphqlQuery({
+        payload: 'graphql-comparison-no-prs',
+        variables: { pullRequestLimit: 5 },
+      })
 
       await runDrafter()
 
@@ -2316,17 +2370,10 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
-      const gqlScope = nock('https://api.github.com')
-        .post('/graphql', (body) => {
-          if (
-            body.query.includes('query findCommitsInComparison') &&
-            body.variables.pullRequestLimit === 34
-          ) {
-            return true
-          }
-          return false
-        })
-        .reply(200, getGqlPayload('graphql-comparison-no-prs'))
+      const gqlScope = mockGraphqlQuery({
+        payload: 'graphql-comparison-no-prs',
+        variables: { pullRequestLimit: 34 },
+      })
 
       await runDrafter()
 
@@ -2343,17 +2390,10 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
-      const gqlScope = nock('https://api.github.com')
-        .post('/graphql', (body) => {
-          if (
-            body.query.includes('query findCommitsInComparison') &&
-            body.variables.historyLimit === 15
-          ) {
-            return true
-          }
-          return false
-        })
-        .reply(200, getGqlPayload('graphql-comparison-no-prs'))
+      const gqlScope = mockGraphqlQuery({
+        payload: 'graphql-comparison-no-prs',
+        variables: { historyLimit: 15 },
+      })
 
       await runDrafter()
 
@@ -2368,17 +2408,10 @@ describe('drafter e2e', () => {
       const scope = nockGetAndPostReleases({
         fetchedReleases: ['release'],
       })
-      const gqlScope = nock('https://api.github.com')
-        .post('/graphql', (body) => {
-          if (
-            body.query.includes('query findCommitsInComparison') &&
-            body.variables.historyLimit === 42
-          ) {
-            return true
-          }
-          return false
-        })
-        .reply(200, getGqlPayload('graphql-comparison-no-prs'))
+      const gqlScope = mockGraphqlQuery({
+        payload: 'graphql-comparison-no-prs',
+        variables: { historyLimit: 42 },
+      })
 
       await runDrafter()
 
@@ -3184,6 +3217,48 @@ describe('drafter e2e', () => {
       })
     })
 
+    describe('with resolved tag templates', () => {
+      it.each([
+        { inputTag: undefined, tag: 'foobar_v2.1.1', version: '2.1.1' },
+        {
+          inputTag: 'override-v3.0.0',
+          tag: 'override-v3.0.0',
+          version: '3.0.0',
+        },
+        {
+          inputTag: 'override-v$RESOLVED_VERSION',
+          tag: 'override-v2.1.1',
+          version: '2.1.1',
+        },
+      ])(
+        'uses $tag in compare links and the release payload',
+        async ({ inputTag, tag, version }) => {
+          await mockContext('push')
+          if (inputTag !== undefined) await mockInput('tag', inputTag)
+          mocks.config.mockReturnValue('config-with-resolved-tag-template')
+          const scope = nockGetAndPostReleases({
+            fetchedReleases: ['release'],
+            fetchedReleasesOverrides: [{ tag_name: 'foobar_v2.1.0' }],
+          })
+          const gqlScope = mockGraphqlQuery({
+            payload: 'graphql-comparison-no-prs',
+          })
+
+          await runDrafter()
+
+          expect(mocks.postReleaseBody.mock.lastCall).toEqual([
+            expect.objectContaining({
+              tag_name: tag,
+              body: `Tag: ${tag}\nhttps://github.com/toolmantim/release-drafter-test-project/compare/foobar_v2.1.0...${tag}\nVersion: ${version}\n`,
+            }),
+          ])
+          expect(scope.isDone()).toBe(true)
+          expect(gqlScope.isDone()).toBe(true)
+          expect(mocks.core.setFailed).not.toHaveBeenCalled()
+        },
+      )
+    })
+
     describe('with custom version resolver', () => {
       it('uses correct default when no labels exist', async () => {
         await mockContext('push')
@@ -3456,6 +3531,7 @@ describe('drafter e2e', () => {
 
         const gqlScope = mockGraphqlQuery({
           payload: 'graphql-comparison-no-prs',
+          suppressRecentPullRequestMock: true,
         })
         const pullRequestScope = nock('https://api.github.com')
           .post(
@@ -3508,6 +3584,7 @@ describe('drafter e2e', () => {
 
         const gqlScope = mockGraphqlQuery({
           payload: 'graphql-comparison-no-prs',
+          suppressRecentPullRequestMock: true,
         })
         const pullRequestScope = nock('https://api.github.com')
           .post('/graphql', (body) =>
@@ -3563,6 +3640,11 @@ describe('drafter e2e', () => {
         expect(infoMessages.some((msg) => msg.includes('[dry-run]'))).toBe(true)
         expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.1')
         expect(mocks.core.setOutput).toHaveBeenCalledWith('name', 'v2.0.1 🌈')
+        expect(
+          mocks.core.setOutput.mock.calls.filter(([output]) =>
+            ['id', 'html_url', 'upload_url'].includes(output),
+          ),
+        ).toEqual([])
 
         expect(scope.isDone()).toBe(true) // GET releases was called
         expect(gqlScope.pendingMocks().length).toBe(0)
@@ -3596,6 +3678,11 @@ describe('drafter e2e', () => {
         expect(infoMessages.some((msg) => msg.includes('[dry-run]'))).toBe(true)
         expect(mocks.core.setOutput).toHaveBeenCalledWith('tag_name', 'v2.0.1')
         expect(mocks.core.setOutput).toHaveBeenCalledWith('name', 'v2.0.1 🌈')
+        expect(
+          mocks.core.setOutput.mock.calls.filter(([output]) =>
+            ['id', 'html_url', 'upload_url'].includes(output),
+          ),
+        ).toEqual([])
 
         expect(scope.isDone()).toBe(true) // GET releases was called
         expect(gqlScope.pendingMocks().length).toBe(0)
