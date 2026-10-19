@@ -3,11 +3,25 @@
 [fork]: https://github.com/release-drafter/release-drafter/fork
 [pr]: https://github.com/release-drafter/release-drafter/compare
 [code-of-conduct]: CODE_OF_CONDUCT.md
+[license]: ../LICENSE
 
 Thank you for contributing to Release Drafter.
 
 This project uses a [Contributor Code of Conduct][code-of-conduct]. All
 contributors must follow it.
+
+By submitting a contribution, you agree that it may be distributed under the
+project's [ISC license][license]. You are responsible for reviewing your
+submission, including content produced with AI-assisted tools, and for ensuring
+that you have the right to submit it.
+
+When you open your first pull request, a bot will ask you to acknowledge these
+contribution policies. After reading this guide, the Code of Conduct, and the
+license, reply to the bot with exactly:
+
+> I have read and agree to the Release Drafter contribution policies.
+
+The pull request cannot be merged until this acknowledgement is recorded.
 
 ## Submitting a pull request
 
@@ -58,6 +72,8 @@ Common commands:
   This verifies that Node 24 can run the scripts without a compile step.
 - `npm run check:dependencies` uses Knip to find unused files, unused
   dependencies, and unlisted dependencies. It does not report unused exports.
+  It uses Knip's normal parser to avoid raw-transfer buffer allocation failures
+  on memory-limited workers, including Mend Renovate.
 - `npm run check:boundaries` uses dependency-cruiser's SWC parser to validate
   internal imports in workspace source, generated JavaScript, and declarations.
 - `npm run check:packages` checks package publication settings and the required
@@ -92,21 +108,41 @@ to run Docker-backed forge conformance tests:
 The CI matrix tests Gitea, Forgejo, and GitLab. Failed GitLab jobs upload
 redacted container logs and fixture metadata.
 
-The forge conformance workflow runs the matrix in these cases:
+The forge conformance workflow runs the matrix for changes to these inputs:
 
-- A pull request changes one of these paths:
-  - `.github/workflows/ci.yml`
-  - `.github/workflows/forge-conformance.yml`
-  - `.node-version`, `package.json`, or `package-lock.json`
-  - Root TypeScript, Vite, or Vitest configuration files
-  - `src/**`
-  - Package source, manifests, or TypeScript configuration files
-- A maintainer applies the exact `ci:forge-conformance` label. This label skips
-  changed-file detection.
-- A push to `main` changes one of the same paths.
+- Source or TypeScript configurations in the core, public package, or adapters
+  (`github-adapter`, `rest-adapter`, `gitea-adapter`, `forgejo-adapter`, and
+  `gitlab-adapter`). Source scope uses package directories so new shared helpers
+  are included automatically. Unit tests and the public CLI entrypoint are excluded.
+- The conformance suites and fixtures under `src/tests/integration/forge-conformance`
+  and `src/tests/integration/gitlab`, excluding the mocked GitHub unit suite.
+- `.github/workflows/forge-conformance.yml`, `.node-version`, `.npmrc`, root
+  TypeScript configurations, `vitest.forge.config.ts`, `vitest.gitlab.config.ts`,
+  or `src/scripts/forge-conformance-router.ts`.
+- Runtime dependency or module-resolution settings in the core, public package,
+  or adapter manifests. Root manifest triggers are limited to conformance
+  commands, Vitest, Vite, Testcontainers, installation overrides, and runtime
+  and workspace resolution settings.
+- Lockfile changes affecting runtime dependencies of those packages, or Vitest,
+  Vite, and Testcontainers. The router follows transitive, nested, installed
+  optional, required peer, and workspace dependencies in both lockfile versions.
+  Workspace development dependencies and unused optional peer integrations
+  such as coverage and browser runners are excluded.
+
+Formatting, linting, code generation, publication metadata, unrelated unit tests,
+CLI, autolabeler, and GitHub Actions changes use normal CI without starting forge
+containers. A dependency update still runs the matrix if it changes a runtime
+package shared with the forge suites. Shared package source changes remain
+conservative triggers even when a particular function is not exercised.
+
+Apply the exact `ci:forge-conformance` label when a change outside this scope
+needs container verification. The label overrides detection. Extend the package
+and tool lists when the suites start using another workspace or test tool.
+The same routing applies to pushes to `main`.
 
 Other pull request label events use changed file detection. The workflow also
-runs the matrix if the base commit is missing or invalid, or if Git fails.
+runs the matrix if the base commit is missing or invalid, if Git fails, or if
+changed dependency inputs cannot be inspected.
 
 The scope job runs the checked-in TypeScript router with the repository's pinned
 Node version. It passes fixed pathspec arguments directly to Git without shell
@@ -121,11 +157,15 @@ the daemon is not available.
 
 The package-readiness workflow checks packaging only. It receives no
 credentials and runs npm in offline and dry-run modes. It disables provenance
-and grants only `contents: read`. It does not configure a registry or trusted
-publisher.
+and grants only `contents: read`.
 
-Do not add a live npm publication step. Do not make a scoped
-`@release-drafter/*` workspace publishable without an approved release plan.
+Only `.github/workflows/npm-publish.yml` may publish to npm. It uses npm trusted
+publishing with GitHub OIDC and the protected `npm` environment; it does not use
+a long-lived npm token. The trusted publisher must specify `npm-publish.yml`,
+the `release-drafter/release-drafter` repository, and the `npm` environment.
+Keep direct publishing and dist-tag management disabled; staging is always
+allowed. Do not make a scoped `@release-drafter/*` workspace
+publishable.
 
 ## Issue management policy
 
@@ -148,37 +188,46 @@ a new issue.
 
 ## Releasing
 
-Run this command:
+1. Run the **Release** workflow on `main`. Use `auto` for Release Drafter's
+   proposed version, or enter `patch`, `minor`, `major`, or an exact stable version.
+2. Review the generated version PR and merge it using GitHub's merge or squash
+   method after checks pass. Release Drafter publishes the immutable GitHub
+   release and updates the major tag automatically.
+3. Approve the **Publish npm Package** workflow through the `npm` environment.
+4. Review and approve the staged package on npm with 2FA to make it public.
 
-```bash
-git checkout main
-git pull
-npm version [major | minor | patch] --ignore-scripts=false
-```
+The workflow creates missing release labels. Release PRs receive the
+`autorelease: pending` label. On each push to `main`, a
+read-only job looks for a merged PR with that label created by the releaser app
+in this repository for the version currently on `main`. It
+verifies that the merge commit is an ancestor of the workflow commit and that
+the root and public package versions match the release branch. Published releases
+are not republished; a pending PR can still finish a failed major-tag update or
+label change. An existing version tag must point to the release PR's merge commit.
+If the version tag is missing, publication creates it at that merge commit.
+Only a verified candidate enables the publication job in the `releaser`
+environment, which can remain restricted to `main`.
+Draft updates and publication share a concurrency group to prevent simultaneous
+edits to the draft release.
 
-> [!IMPORTANT]
->
-> - Select the version increment for the last drafted release.
-> - Use a version number instead of `major | minor | patch` if needed.
-> - This repository sets `ignore-scripts=true` in `.npmrc`. Use
->   `--ignore-scripts=false` to run the release lifecycle scripts.
+The releaser GitHub App installation needs `Contents: write`,
+`Pull requests: write`, and `Workflows: write`. Publication requests all three
+permissions because the release commit can contain different workflow files
+from the current default branch. Preparation requests only contents and pull
+request access. GitHub release publication uses this app token; npm staging
+uses OIDC in `npm-publish.yml`, which grants `id-token: write`.
 
-The command performs these tasks:
+If GitHub publication fails, a later push to `main` retries discovery of the
+unpublished release. The workflow executes the action from the triggering `main`
+commit and tags the release PR's merge commit, even when a later workflow fix
+triggers recovery. After publication and the major-tag update, the workflow
+replaces `autorelease: pending` with `autorelease: tagged`. No structured PR-body
+metadata is required. For release PRs created before this flow, add
+`autorelease: pending` before triggering recovery.
 
-- Runs tests (`preversion` script).
-- Bumps the private root version in [package.json](../package.json).
-- Synchronizes that version to every workspace manifest, including the public
-  `packages/release-drafter/package.json`, refreshes `package-lock.json`, and
-  stages all versioned manifests (`version` script).
-- Commits the changes and creates the corresponding tag.
-- Pushes the commit and tag (`postversion` script).
-
-After the push, the `release.yml` workflow runs for the new tag. It performs
-these tasks:
-
-- Publishes the release draft.
-- Updates the major version tag. For example, a `v6.2.1` tag moves `v6` to the
-  same commit.
+For a failed npm publication, run **Publish npm Package** manually with the
+existing release tag. If the workflow needs a fix, merge it first and run from
+the corrected ref, which must be allowed by the `npm` environment.
 
 ## Resources
 

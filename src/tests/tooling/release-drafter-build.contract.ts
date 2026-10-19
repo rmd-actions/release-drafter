@@ -16,7 +16,6 @@ const approvedRuntimeDependencies = new Set([
   '@octokit/plugin-paginate-rest',
   '@octokit/plugin-rest-endpoint-methods',
   '@octokit/plugin-retry',
-  'undici',
 ])
 const nodeBuiltins = new Set([
   ...builtinModules,
@@ -125,7 +124,9 @@ const reachableModules = (
   return reachable
 }
 
-describe.sequential('release-drafter workspace build boundary', () => {
+describe('release-drafter workspace build boundary', {
+  concurrent: false,
+}, () => {
   let shippedFiles: Map<string, string>
   let javascriptFiles: Map<string, string>
   let indexClosure: Set<string>

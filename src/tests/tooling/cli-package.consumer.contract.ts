@@ -54,15 +54,14 @@ const expectedBundledDependencyNotices = [
   'yaml',
   'zod',
 ]
-const approvedRuntimeDependencies = {
-  '@gitbeaker/rest': '43.8.0',
-  '@octokit/core': '^7.0.6',
-  '@octokit/plugin-paginate-graphql': '^6.0.0',
-  '@octokit/plugin-paginate-rest': '^14.0.0',
-  '@octokit/plugin-rest-endpoint-methods': '^17.0.0',
-  '@octokit/plugin-retry': '^8.1.0',
-  undici: '^7.29.0',
-}
+const approvedRuntimeDependencies = new Set([
+  '@gitbeaker/rest',
+  '@octokit/core',
+  '@octokit/plugin-paginate-graphql',
+  '@octokit/plugin-paginate-rest',
+  '@octokit/plugin-rest-endpoint-methods',
+  '@octokit/plugin-retry',
+])
 const nodeBuiltins = new Set(
   builtinModules.map((specifier) => specifier.replace(/^node:/, '')),
 )
@@ -115,6 +114,7 @@ const isolatedEnvironment = (): NodeJS.ProcessEnv => {
     'NODE_AUTH_TOKEN',
     'NPM_TOKEN',
     'RELEASE_DRAFTER_TOKEN',
+    'npm_config_allow_scripts',
   ]) {
     delete environment[name]
   }
@@ -228,7 +228,9 @@ const containsJsonOutput = (output: string): boolean =>
     )
   })
 
-describe.sequential('release-drafter packed CLI and package consumer', () => {
+describe('release-drafter packed CLI and package consumer', {
+  concurrent: false,
+}, () => {
   let temporaryDirectory: string
   let consumerDirectory: string
   let installedPackageDirectory: string
@@ -355,7 +357,14 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
       },
       type: 'module',
     })
-    expect(manifest.dependencies).toEqual(approvedRuntimeDependencies)
+    expect(new Set(Object.keys(manifest.dependencies ?? {}))).toEqual(
+      approvedRuntimeDependencies,
+    )
+    // Dependency updates belong in the source manifest, not test fixtures.
+    const sourceManifest = JSON.parse(
+      readFileSync(join(packageDirectory, 'package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> }
+    expect(manifest.dependencies).toEqual(sourceManifest.dependencies)
   })
 
   it('preserves the CLI shebang and executable mode where the platform exposes it', () => {
@@ -381,11 +390,13 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
     writeFileSync(
       join(consumerDirectory, 'consumer.mts'),
       `
-      import { createForgeAdapter, draftRelease } from 'release-drafter'
+      import { createForgeAdapter, draftRelease, loadConfig } from 'release-drafter'
       import type {
         CreateForgeAdapterOptions,
+        DraftReleaseConfig,
         DraftReleaseOptions,
         DraftReleaseResult,
+        LoadConfigOptions,
         ForgeAdapter,
         ForgejoForgeAdapterOptions,
         GiteaForgeAdapterOptions,
@@ -400,6 +411,14 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
       declare const adapter: ForgeAdapter
       declare const logger: Logger
       const injectable = { adapter, logger } satisfies Partial<DraftReleaseOptions>
+      const load: (options: LoadConfigOptions) => Promise<DraftReleaseConfig> = loadConfig
+      const bundled = createForgeAdapter({ forge: 'github', token: 'token' })
+      void loadConfig({
+        adapter: bundled,
+        repository: { owner: 'acme', name: 'widgets', serverUrl: 'https://github.com' },
+        overrides: { prerelease: true, latest: false },
+      })
+      void load
       void invoke
       void injectable
       const factoryOptions = {
@@ -475,6 +494,24 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
       process.stderr.write = stderrWrite
       if (typeof facade.draftRelease !== 'function') {
         throw new Error('draftRelease is not a function')
+      }
+      if (typeof facade.loadConfig !== 'function') {
+        throw new Error('loadConfig is not a function')
+      }
+      const config = await facade.loadConfig({
+        adapter: {
+          getDefaultBranch: async () => 'main',
+          getRepositoryConfig: async ({ path, ref }) => {
+            if (path !== '.github/release-drafter.yml' || ref !== 'main') {
+              throw new Error('unexpected configuration target')
+            }
+            return 'template: $CHANGES\\n'
+          },
+        },
+        repository: { owner: 'acme', name: 'widgets', serverUrl: 'https://example.test' },
+      })
+      if (config.commitish !== 'main' || config.latest !== true || !config['change-template']) {
+        throw new Error('configuration was not normalized')
       }
       stdoutWrite.call(process.stdout, 'imported\\n')
     `,
@@ -714,7 +751,7 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
           !specifier.startsWith('node:') &&
           !nodeBuiltins.has(bareBuiltin) &&
           !nodeBuiltins.has(bareBuiltin.split('/')[0] ?? '') &&
-          !Object.hasOwn(approvedRuntimeDependencies, packageName)
+          !approvedRuntimeDependencies.has(packageName)
         ) {
           problems.push(`undeclared external import: ${specifier}`)
         }

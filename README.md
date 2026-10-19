@@ -39,35 +39,14 @@ jobs:
           config-name: release-drafter.yml
 ```
 
-## Command-line interface
+## Use outside GitHub Actions
 
-Release Drafter provides a CLI for local use and automation. The CLI requires
-Node.js 24 or later.
+The `release-drafter` package provides a command-line interface and a programmatic
+API for other CI systems, scripts, and applications. It supports GitHub,
+GitHub Enterprise Server, Gitea, Forgejo, and GitLab.
 
-```sh
-npx release-drafter owner/repo --dry-run
-```
-
-For GitHub.com or GitHub Enterprise Cloud on `*.ghe.com`, authenticate with
-`GH_TOKEN` or `GITHUB_TOKEN`. For GitHub Enterprise Server, use
-`GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN`.
-Release Drafter does not invoke [`gh`](https://cli.github.com/). To use GitHub
-CLI credentials, pass them through `GH_TOKEN`:
-
-```sh
-GH_TOKEN="$(gh auth token)" npx release-drafter owner/repo --dry-run
-```
-
-The CLI can validate one pull request with the same category rules as the Check
-PR action:
-
-```sh
-npx release-drafter check-pr owner/repo 123
-```
-
-See the [`release-drafter` package README](./packages/release-drafter/README.md)
-for installation instructions, the complete option reference, configuration
-targets, JSON output, and exit codes.
+See the [package README](./packages/release-drafter/README.md) for installation,
+configuration, CLI usage, and programmatic API examples.
 
 ## Check pull requests
 
@@ -166,6 +145,7 @@ The `.github/release-drafter.yml` file supports these keys:
 | `new-contributor-template`       | Optional | The template to use for each new contributor in `$NEW_CONTRIBUTORS`. Use [new contributor template variables](#new-contributor-template-variables) to insert values. Default: `"* $AUTHOR_MENTION made their first contribution in #$NUMBER"`.                                                                                                                       |
 | `no-new-contributor-template`    | Optional | The template to use for `$NEW_CONTRIBUTORS` when there are no new contributors to list. Default: `"* No new contributors"`.                                                                                                                                                                                                                                          |
 | `no-contributors-template`       | Optional | The template to use when `$CONTRIBUTORS` has no entries. Default: `"No contributors"`.                                                                                                                                                                                                                                                                               |
+| `group-changes`                  | Optional | Groups pull requests whose titles share the same `group` into a single changelog entry. See [Group changes](#group-changes).                                                                                                                                                                                                                                         |
 | `replacers`                      | Optional | Searches and replaces content in the generated changelog body. See [Replacers](#replacers).                                                                                                                                                                                                                                                                          |
 | `sort-by`                        | Optional | Sorts the changelog by `merged_at` or `title`. Default: `merged_at`.                                                                                                                                                                                                                                                                                                 |
 | `sort-direction`                 | Optional | Sorts the changelog in `ascending` or `descending` order. Default: `descending`.                                                                                                                                                                                                                                                                                     |
@@ -189,8 +169,27 @@ Use these variables in `template`, `header`, and `footer`:
 | `$CONTRIBUTORS`     | A comma-separated list of pull request authors, commit authors, and commit committers for the release.      |
 | `$NEW_CONTRIBUTORS` | A Markdown list of pull request authors making their first contribution and the corresponding pull request. |
 | `$PREVIOUS_TAG`     | The previous release tag.                                                                                   |
+| `$RESOLVED_TAG`     | The final release tag after expanding `tag-template` or the action's `tag` input override.                  |
 | `$REPOSITORY`       | The current repository.                                                                                     |
 | `$OWNER`            | The current repository owner.                                                                               |
+
+Use `$RESOLVED_TAG` to build compare links that include the complete tag,
+including any prefix in `tag-template`:
+
+```yaml
+tag-template: 'foobar_v$RESOLVED_VERSION'
+tag-prefix: foobar_v
+template: |
+  $CHANGES
+
+  [Full Changelog](https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG)
+```
+
+For example, the tag `foobar_v1.9.2` gives `$RESOLVED_TAG` the value
+`foobar_v1.9.2`, while `$RESOLVED_VERSION` remains `1.9.2` with the default
+`version-template`. The `tag-prefix` setting filters and parses previous tags;
+it does not add a prefix to the new tag. If neither `tag-template` nor a `tag`
+input is provided, `$RESOLVED_TAG` is empty.
 
 ## Category template variables
 
@@ -320,7 +319,8 @@ Use these variables in `change-template`:
 
 | Variable         | Description                                                                                                                                                                                                                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `$NUMBER`        | The pull request number. Example: `42`.                                                                                                                                                                                                                                                    |
+| `$NUMBER`        | The pull request number. Example: `42`. For a [grouped entry](#group-changes), the number of the newest pull request.                                                                                                                                                                      |
+| `$NUMBERS`       | Every pull request number of the entry, prefixed with `#` and separated with `, `, oldest first. Example: `#42`, or `#308, #310, #316` for a [grouped entry](#group-changes).                                                                                                              |
 | `$CATEGORY`      | The title of the category that matched the pull request, preserving its configured case. Empty for uncategorized pull requests.                                                                                                                                                            |
 | `$TITLE`         | The pull request title. Example: `Add alien technology`. Release Drafter prefixes characters in `change-title-escapes`, except `@` and `#`, with a backslash. Markdown then displays these characters as text. For `@` and `#`, Release Drafter adds an HTML comment to prevent a mention. |
 | `$AUTHOR`        | The pull request author's username. Example: `gracehopper`.                                                                                                                                                                                                                                |
@@ -552,6 +552,72 @@ exclude-contributors:
   - 'myusername'
 ```
 
+## Group changes
+
+Use `group-changes` to group pull requests that repeatedly update the same thing
+into a single changelog entry. A dependency that a bot bumps several times
+between releases then appears once, with the full version range and every pull
+request number:
+
+```yml
+change-template: '* $TITLE ($NUMBERS) $AUTHORS'
+
+group-changes:
+  - pattern: '/^Bump (?<group>.+?) from (?<from>\S+) to (?<to>\S+)$/'
+    title-template: 'Bump $GROUP from $FIRST_FROM to $LAST_TO'
+```
+
+```
+* Bump lib from 1.0.0 to 1.3.0 (#41, #42, #44) @dependabot[bot]
+* Bump other-lib from 2.0.0 to 2.1.0 (#43) @dependabot[bot]
+```
+
+Release Drafter matches `pattern` against the pull request title. Write it as a
+regular expression literal, such as `/…/i`, because a plain string is matched
+literally and cannot hold capture groups. A `group` capture group is required
+and holds the value that changes are grouped by. Release Drafter skips a rule it
+cannot use and reports the reason in the action log.
+
+Add a `group_<name>` capture group for every further value that has to match
+before two pull requests are grouped. A bump of the same dependency in another
+submodule then stays a change of its own:
+
+```yml
+group-changes:
+  - pattern: '/^Bump (?<group>.+?) from (?<from>\S+) to (?<to>\S+)(?<group_in> in .+)?$/'
+    title-template: 'Bump $GROUP from $FIRST_FROM to $LAST_TO$GROUP_IN'
+```
+
+```
+* Bump lib from 1.0.0 to 1.2.0 in /module-a (#41, #43) @dependabot[bot]
+* Bump lib from 1.0.0 to 1.1.0 in /module-b (#42) @dependabot[bot]
+```
+
+An entry is one combination of the `group` value and every `group_<name>` value,
+so `lib` in `/module-a` and `lib` in `/module-b` stay two entries.
+
+`title-template` builds `$TITLE` of a grouped entry:
+
+| Variable        | Description                                                                      |
+| --------------- | -------------------------------------------------------------------------------- |
+| `$GROUP`        | The value of the `group` capture group.                                          |
+| `$GROUP_<NAME>` | The value of a corresponding `group_<name>` capture group.                       |
+| `$FIRST_<NAME>` | The value of the `<name>` capture group in the oldest pull request of the entry. |
+| `$LAST_<NAME>`  | The value of the `<name>` capture group in the newest pull request of the entry. |
+
+Release Drafter applies the first rule that matches, groups changes within each
+category separately, and orders the pull requests of an entry by merge date. An
+entry keeps the position of its newest pull request, which is also the source of
+`$NUMBER`, `$AUTHOR`, `$BODY`, and `$URL`. `$AUTHORS` lists the authors of every
+pull request of the entry. A capture group that did not participate in the match
+holds an empty value, and a group that matches a single pull request keeps its
+original title.
+
+`collapse-after` counts entries, so grouped changes count as one. Release
+Drafter matches `pattern` against the original pull request titles, before the
+changelog body exists. `replacers` run last, on the finished body, so their
+`search` sees the title that `title-template` built, not the original ones.
+
 ## Replacers
 
 Use `replacers` to search and replace content in the generated changelog body.
@@ -572,7 +638,8 @@ Release Drafter parses `search` as a regular expression. `replace` supports the
 
 ## Autolabeler
 
-Use the Autolabeler action to add labels to pull requests.
+Use the Autolabeler action to add labels to pull requests and optionally remove
+configured labels that no longer match.
 
 ```yaml
 name: Auto Label
@@ -580,10 +647,10 @@ name: Auto Label
 on:
   pull_request:
     # Autolabeler handles these event types.
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, edited]
   # Use pull_request_target to label pull requests from forks.
   # pull_request_target:
-  #   types: [opened, reopened, synchronize]
+  #   types: [opened, reopened, synchronize, edited]
 
 permissions:
   contents: read
@@ -600,29 +667,78 @@ jobs:
 
 The available matchers are `files` for glob patterns and `branch`, `title`, and
 `body` for regular expressions. Autolabeler evaluates each matcher
-independently. It adds the label if at least one matcher succeeds.
+independently. A rule matches if at least one matcher succeeds. Use `labels`
+with a nonempty list of nonempty strings. The scalar `label` option remains
+supported for backward compatibility. Each rule must specify at least one of
+these options. If both are supplied, Autolabeler combines them, using `labels`
+first and then `label`. Autolabeler adds
+all labels from matching rules, removes duplicates, and preserves their
+configuration order.
+
+Rules run in configuration order. Set `stop-on-match: true` on a rule to stop
+evaluating later rules after that rule matches and adds all its labels. Labels
+from earlier matching rules are retained. A rule that does not match never
+stops evaluation. The default is `false`, so all rules are evaluated.
+
+Set `fallback: true` on one rule to add its labels when no ordinary rule
+matches. A fallback rule must not specify matchers. It runs after ordinary
+rules regardless of its position in the list, including when it is the only
+rule. The default is `false`; an ordinary rule without matchers adds no labels.
+Only one fallback rule is supported. `fallback: true` and `stop-on-match: true`
+are mutually exclusive.
+
+Without a fallback rule, a run with no matches adds no labels. An empty
+`autolabeler: []` list also adds no labels. Existing labels do not affect rule
+matching or fallback selection.
+
+Set top-level `sync-labels: true` in the configuration to remove configured
+labels that are not selected by the current run. The default is `false`, which
+preserves the existing behavior of only adding labels. With syncing enabled,
+changing a PR title from `fix: ...` to `feat: ...` can replace a configured
+`patch` label with `minor`. Include the `edited` event in your workflow to
+reevaluate title and body changes.
+
+Syncing manages labels from every valid rule, including fallback labels and
+rules skipped by `stop-on-match`. A label stays when any evaluated rule selects
+it. Matching an ordinary rule removes stale fallback labels; selecting the
+fallback removes stale ordinary labels. Labels outside the current valid rules
+are preserved, including labels whose rules were removed from the config or
+skipped because of invalid regular expressions. An empty rule list removes no
+labels. Configured labels added manually are also managed. Label names are
+compared without regard to case. The `dry-run` input reports proposed additions
+and removals without changing labels. The `labels` output remains the labels
+selected by the configuration.
 
 ```yml
 # .github/release-drafter.yml
+sync-labels: true
 autolabeler:
-  - label: 'chore'
+  - labels: ['chore', 'documentation']
     files:
       - '*.md'
     branch:
       - '/docs{0,1}\/.+/'
-  - label: 'bug'
+  - labels: ['bug']
+    stop-on-match: true
     branch:
       - '/fix\/.+/'
     title:
       - '/fix/i'
-  - label: 'enhancement'
+  - labels: ['enhancement']
     branch:
       - '/feature\/.+/'
     body:
       - '/JIRA-[0-9]{1,4}/'
+  - labels: ['needs-triage', 'uncategorized']
+    fallback: true
 
 # Add the remaining Release Drafter configuration here.
 ```
+
+In this example, a matching documentation rule adds both `chore` and
+`documentation`. A matching bug rule adds `bug` and skips the enhancement rule,
+while keeping any documentation labels already selected. A pull request that
+matches none of the ordinary rules receives `needs-triage` and `uncategorized`.
 
 ## Prerelease workflow
 
@@ -720,18 +836,45 @@ corresponding values in `release-drafter.yml`.
 
 The Release Drafter action sets outputs for later workflow steps.
 
-| Output             | Description                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------- |
-| `id`               | The ID of the release that was created or updated.                                                      |
-| `name`             | The name of this release.                                                                               |
-| `tag_name`         | The name of the tag associated with this release.                                                       |
-| `body`             | The body of the drafted release.                                                                        |
-| `html_url`         | The URL for viewing the release. For example, `https://github.com/octocat/Hello-World/releases/v1.0.0`. |
-| `upload_url`       | The URL for uploading release assets.                                                                   |
-| `resolved_version` | Version from the [version resolver](#version-resolver). Example: `6.3.1`.                               |
-| `major_version`    | Major component of the resolved version. Example: `6` for `6.3.1`.                                      |
-| `minor_version`    | Minor component of the resolved version. Example: `3` for `6.3.1`.                                      |
-| `patch_version`    | Patch component of the resolved version. Example: `1` for `6.3.1`.                                      |
+| Output             | Description                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | The ID of the release that was created or updated.                                                                        |
+| `name`             | The name of this release.                                                                                                 |
+| `tag_name`         | The name of the tag associated with this release.                                                                         |
+| `labels`           | A JSON array of unique, sorted labels matched by configuration conditions on included merged PRs. Empty results are `[]`. |
+| `body`             | The body of the drafted release.                                                                                          |
+| `html_url`         | The URL for viewing the release. For example, `https://github.com/octocat/Hello-World/releases/v1.0.0`.                   |
+| `upload_url`       | The URL for uploading release assets.                                                                                     |
+| `resolved_version` | Version from the [version resolver](#version-resolver). Example: `6.3.1`.                                                 |
+| `major_version`    | Major component of the resolved version. Example: `6` for `6.3.1`.                                                        |
+| `minor_version`    | Minor component of the resolved version. Example: `3` for `6.3.1`.                                                        |
+| `patch_version`    | Patch component of the resolved version. Example: `1` for `6.3.1`.                                                        |
+
+The `labels` output contains labels present on included merged pull requests
+that match successful `label` or `labels` conditions in the configuration. It
+includes matching pre-include conditions and selected changelog and
+version-resolver categories. It respects `labels-mode`, category exclusivity,
+and any title or path predicates in the same condition. Labels from failed
+conditions, unselected categories, excluded PRs, or labels not referenced by the
+configuration are omitted. Title-only, path-only and fallback matches add no
+labels.
+
+The output covers the comparison range used to draft the release and is also
+set in dry-run mode. Empty results or no available comparison base produce `[]`.
+
+Use it to select later workflow steps, for example deploying a service when one
+of the included pull requests matches a configured `api/user` label condition:
+
+```yaml
+- uses: release-drafter/release-drafter@v7
+  id: release
+- name: Deploy user service
+  if: contains(fromJSON(steps.release.outputs.labels), 'api/user')
+  run: ./deploy-user-service.sh
+```
+
+Drafter and Check PR return labels as JSON arrays. The Autolabeler action's
+existing `labels` output remains a comma-separated list of matched labels.
 
 ## GitHub Enterprise Server (GHES)
 
@@ -742,9 +885,18 @@ GitHub adapter. If the GitHub Enterprise Server instance supports the required
 REST and GraphQL APIs, the same workflow can target it without
 `github.com`-specific configuration.
 
+## Adopters
+
+A non-exhaustive list of the projects and organizations using Release Drafter
+lives in [ADOPTERS.md](ADOPTERS.md). If you use Release Drafter, please add
+yourself.
+
 ## Contributing
 
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution instructions.
+
+Maintainers: see [Releasing](docs/CONTRIBUTING.md#releasing) for the release PR
+flow and its protected GitHub and npm environments.
 
 > [!IMPORTANT]
 >

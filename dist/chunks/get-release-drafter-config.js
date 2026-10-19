@@ -1,4 +1,4 @@
-import { _ as object, b as union, d as ZodDefault, f as _enum, g as number, h as literal, m as boolean, p as array, t as composeConfigGet, u as escapeStringRegexp, v as string, w as info, x as Minimatch, y as stringbool } from "./config.js";
+import { S as Minimatch, T as info, _ as number, b as stringbool, d as escapeStringRegexp, f as ZodDefault, g as literal, h as boolean, m as array, p as _enum, t as composeConfigGet, v as object, x as union, y as string } from "./config.js";
 //#region node_modules/conventional-commits-parser/dist/regex.js
 var nomatchRegex = /(?!.*)/;
 function escape(string) {
@@ -10,18 +10,22 @@ function joinOr(parts) {
 function getNotesRegex(noteKeywords, notesPattern) {
 	if (!noteKeywords) return nomatchRegex;
 	const noteKeywordsSelection = joinOr(noteKeywords);
-	if (!notesPattern) return new RegExp(`^[\\s|*]*(${noteKeywordsSelection})[:\\s]+(.*)`, "i");
+	if (!notesPattern) return new RegExp(`^(?:\\*\\s+)?(${noteKeywordsSelection}):\\s*(.*)`, "i");
 	return notesPattern(noteKeywordsSelection);
 }
 function getReferencePartsRegex(issuePrefixes, issuePrefixesCaseSensitive) {
 	if (!issuePrefixes) return nomatchRegex;
 	const flags = issuePrefixesCaseSensitive ? "g" : "gi";
-	return new RegExp(`(?:.*?)??\\s*([\\w-\\.\\/]*?)??(${joinOr(issuePrefixes)})([\\w-]+)(?=\\s|$|[,;)\\]])`, flags);
+	return new RegExp(`(?:.*?)??\\s*([\\w-\\.\\/]*?)??(${joinOr(issuePrefixes)})([\\w-]+)(?=\\s|$|[,;.)\\]])`, flags);
 }
 function getReferencesRegex(referenceActions) {
 	if (!referenceActions) return /()(.+)/gi;
 	const joinedKeywords = joinOr(referenceActions);
 	return new RegExp(`(${joinedKeywords})(?:\\s+(.*?))(?=(?:${joinedKeywords})|$)`, "gi");
+}
+function getFooterTokenRegex(issuePrefixes) {
+	const issuePrefixSeparator = issuePrefixes ? `|\\s+(?:${joinOr(issuePrefixes)})` : "";
+	return new RegExp(`^(?:BREAKING CHANGE|[\\w-]+)(?::\\s+${issuePrefixSeparator}).+`, "i");
 }
 /**
 * Make the regexes used to parse a commit.
@@ -33,6 +37,7 @@ function getParserRegexes(options = {}) {
 		notes: getNotesRegex(options.noteKeywords, options.notesPattern),
 		referenceParts: getReferencePartsRegex(options.issuePrefixes, options.issuePrefixesCaseSensitive),
 		references: getReferencesRegex(options.referenceActions),
+		footerToken: getFooterTokenRegex(options.issuePrefixes),
 		mentions: /@([\w-]+)/g,
 		url: /\b(?:https?):\/\/(?:www\.)?([-a-zA-Z0-9@:%_+.~#?&//=])+\b/
 	};
@@ -128,7 +133,7 @@ var defaultOptions = {
 	],
 	revertPattern: /^Revert\s"([\s\S]*)"\s*This reverts commit (\w*)\.?/,
 	revertCorrespondence: ["header", "hash"],
-	fieldPattern: /^-(.*?)-$/
+	fieldPattern: /^-(?=.*\w)(.*?)-$/
 };
 //#endregion
 //#region node_modules/conventional-commits-parser/dist/CommitParser.js
@@ -277,7 +282,7 @@ var CommitParser = class {
 		const { regexes, commit } = this;
 		if (!this.isLineAvailable()) return false;
 		const matches = this.currentLine().match(regexes.notes);
-		let references = [];
+		let isFooterToken;
 		if (matches) {
 			const note = {
 				title: matches[1],
@@ -289,27 +294,24 @@ var CommitParser = class {
 			while (this.isLineAvailable()) {
 				if (this.parseMeta()) return true;
 				if (this.parseNotes()) return true;
-				references = this.parseReferences(this.currentLine());
-				if (references.length) commit.references.push(...references);
-				else note.text = appendLine(note.text, this.currentLine());
+				isFooterToken = regexes.footerToken.test(this.currentLine());
+				commit.references.push(...this.parseReferences(this.currentLine()));
+				if (!isFooterToken) note.text = appendLine(note.text, this.currentLine());
 				commit.footer = appendLine(commit.footer, this.currentLine());
 				this.nextLine();
-				if (references.length) break;
+				if (isFooterToken) break;
 			}
 			return true;
 		}
 		return false;
 	}
 	parseBodyAndFooter(isBody) {
-		const { commit } = this;
+		const { commit, regexes } = this;
 		if (!this.isLineAvailable()) return isBody;
-		const references = this.parseReferences(this.currentLine());
-		const isStillBody = !references.length && isBody;
+		const isStillBody = !regexes.footerToken.test(this.currentLine()) && isBody;
+		commit.references.push(...this.parseReferences(this.currentLine()));
 		if (isStillBody) commit.body = appendLine(commit.body, this.currentLine());
-		else {
-			commit.references.push(...references);
-			commit.footer = appendLine(commit.footer, this.currentLine());
-		}
+		else commit.footer = appendLine(commit.footer, this.currentLine());
 		this.nextLine();
 		return isStillBody;
 	}
@@ -339,8 +341,8 @@ var CommitParser = class {
 	}
 	cleanupCommit() {
 		const { commit } = this;
-		if (commit.body) commit.body = trimNewLines(commit.body);
-		if (commit.footer) commit.footer = trimNewLines(commit.footer);
+		commit.body &&= trimNewLines(commit.body);
+		commit.footer &&= trimNewLines(commit.footer);
 		commit.notes.forEach((note) => {
 			note.text = trimNewLines(note.text);
 		});
@@ -531,9 +533,17 @@ var evaluateCategories = (pullRequest, categories) => {
 		usedFallback: false
 	};
 	const highest = [...changelog.categories, ...version.categories].map((category) => category["semver-increment"]).filter((increment) => increment in priority).reduce((current, increment) => !current || priority[increment] > priority[current] ? increment : current, void 0);
+	const matchedCategories = [
+		...preIncludes.filter((category) => matchesCategory(category, pullRequest)),
+		...includedByPrecondition ? preExcludes.filter((category) => matchesCategory(category, pullRequest)) : [],
+		...changelog.categories,
+		...version.categories
+	];
+	const actualLabels = getPullRequestLabels(pullRequest);
 	return {
 		included,
 		excluded,
+		matchedLabels: unique(matchedCategories.flatMap((category) => category.when.filter((condition) => matchesCategoryCondition(condition, pullRequest)).flatMap((condition) => condition.labels.filter((label) => actualLabels.includes(label))))).sort(),
 		changelogCategories: changelog.categories,
 		versionResolverCategories: version.categories,
 		usedChangelogFallback: changelog.usedFallback,
@@ -811,6 +821,16 @@ var categorySchema = object({
 	when: changeConditionSchema.or(array(changeConditionSchema)).optional().default([])
 });
 var categorySchemaDefaults = categorySchema.parse({});
+var groupChangeSchema = object({
+	/**
+	* A regular expression literal, such as `/^Bump (?<group>.+) from (?<from>\S+) to (?<to>\S+)$/`, matched against the pull request title. A `group` capture group is required and holds the value changes are grouped by. Every further `group_<name>` capture group extends the value, so that changes are merged only when all of them match.
+	*/
+	pattern: string().min(1),
+	/**
+	* The template to use for `$TITLE` of a merged entry. Expands `$GROUP`, every `$GROUP_<NAME>` and, for every other capture group, `$FIRST_<NAME>` and `$LAST_<NAME>`.
+	*/
+	"title-template": string().min(1)
+});
 var exclusiveConfigSchema = object({
 	/**
 	* The template to use for each merged change.
@@ -919,6 +939,10 @@ var exclusiveConfigSchema = object({
 		replace: string().min(0)
 	})).optional().default([]),
 	/**
+	* Group changes whose titles share the same `group` into a single changelog entry.
+	*/
+	"group-changes": array(groupChangeSchema).optional().default([]),
+	/**
 	* Categorize changes
 	*/
 	categories: array(categorySchema).optional().default([]),
@@ -964,7 +988,7 @@ var configSchemaDefaults = Object.fromEntries(Object.entries({
 	return [key, void 0];
 }));
 //#endregion
-//#region node_modules/verkit/dist/comparison-DenM3wCn.js
+//#region node_modules/verkit/dist/comparison-CmVirWIW.js
 var LETTER_DASH_NUMBER = "[a-zA-Z0-9-]";
 var NUMERIC_IDENTIFIER = String.raw`0|[1-9]\d*`;
 var NUMERIC_IDENTIFIER_LOOSE = String.raw`\d+`;
@@ -1076,7 +1100,7 @@ function compareParsed(left, right) {
 	return compareMainParsed(left, right) || comparePrereleaseParsed(left, right);
 }
 //#endregion
-//#region node_modules/verkit/dist/set-CC5YeoYX.js
+//#region node_modules/verkit/dist/set-BGFWKKE8.js
 var STRICT_COMPARATOR = safeRegex(String.raw`^${GREATER_LESS_THAN}\s*(${FULL_PLAIN})$|^$`);
 var LOOSE_COMPARATOR$1 = safeRegex(String.raw`^${GREATER_LESS_THAN}\s*(${LOOSE_PLAIN})$|^$`);
 function formatComparator(comparator) {
@@ -1116,7 +1140,7 @@ function testComparatorSet(set, version, options) {
 	return !version.prerelease?.length || !!options.includePrerelease || set.some((comparator) => comparatorAllowsPrerelease(comparator, version));
 }
 //#endregion
-//#region node_modules/verkit/dist/range-DvX-Y6iv.js
+//#region node_modules/verkit/dist/range-C5wjdo9a.js
 function formatRange(range) {
 	return range.sets.map((set) => set.map(formatComparator).join(" ")).join("||");
 }
@@ -1467,6 +1491,62 @@ function parseCategories(categories, deprecatedConfig, logger) {
 	return parsedCategories;
 }
 //#endregion
+//#region packages/core/src/config/parse-group-changes.ts
+/** Capture group names that `renderTemplate` can expand as `$FIRST_<NAME>`/`$LAST_<NAME>`. */
+var templatableName = /^[A-Za-z_]+$/;
+/** Capture group names that build the grouping key: `group` and every `group_<name>`. */
+var isGroupName = (name) => /^group(_|$)/i.test(name);
+/**
+* Converts the configured `group-changes` patterns into regular expressions and
+* collects the capture group names their `title-template` can reference.
+*
+* Rules that cannot be used are dropped with a warning so that a single bad
+* pattern never fails the whole release, matching how `replacers` are handled.
+*/
+var parseGroupChanges = (params) => {
+	const { groupChanges, logger } = params;
+	return groupChanges.flatMap((groupChange) => {
+		let pattern;
+		try {
+			const converted = stringToRegex(groupChange.pattern);
+			pattern = new RegExp(converted.source, converted.flags.replace(/[gy]/g, ""));
+		} catch {
+			logger.warning(`Bad group-changes pattern: '${groupChange.pattern}'`);
+			return [];
+		}
+		const names = captureNamesOf(pattern);
+		const groupNames = names.filter(isGroupName);
+		if (groupNames.length === 0) {
+			logger.warning(`The group-changes pattern '${groupChange.pattern}' must be a regular expression literal, such as '/\u2026/', with a 'group' capture group.`);
+			return [];
+		}
+		const templatable = names.filter((name) => {
+			if (templatableName.test(name)) return true;
+			logger.warning(`The group-changes capture group '${name}' is not available in 'title-template'. Use letters and underscores only.`);
+			return false;
+		});
+		return [{
+			...groupChange,
+			pattern,
+			groupNames,
+			captureNames: templatable.filter((name) => !isGroupName(name))
+		}];
+	});
+};
+/**
+* Lists every named capture group of a pattern. Prefixing the source with an
+* empty alternative makes the expression match an empty string, so the match
+* reports all group names at once.
+*/
+var captureNamesOf = (pattern) => {
+	try {
+		const probe = new RegExp(`|${pattern.source}`, pattern.flags);
+		return Object.keys(probe.exec("")?.groups ?? {});
+	} catch {
+		return [];
+	}
+};
+//#endregion
 //#region packages/core/src/config/merge-input-and-config.ts
 var mergeInputAndConfig = (params) => {
 	const { config: originalConfig, input, defaultCommitish, logger } = params;
@@ -1494,13 +1574,18 @@ var mergeInputAndConfig = (params) => {
 		}
 	}).filter((replacer) => !!replacer);
 	const categories = parseCategories(config, deprecatedCategoryConfig, logger);
+	const groupChanges = parseGroupChanges({
+		groupChanges: config["group-changes"],
+		logger
+	});
 	const parsedConfig = {
 		...config,
 		commitish,
 		latest,
 		prerelease,
 		replacers,
-		categories
+		categories,
+		"group-changes": groupChanges
 	};
 	validateParsedConfig(parsedConfig);
 	return parsedConfig;
