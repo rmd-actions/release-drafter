@@ -55,11 +55,12 @@ export const mergeInputAndConfig = (params: {
 
   applyOverrides(config, input, logger)
   const commitish = config.commitish || defaultCommitish || ''
-  const latest = typeof config.latest !== 'boolean' ? true : config.latest
+  const latest = config.latest ?? true
   const prerelease =
     typeof config.prerelease !== 'boolean' ? false : config.prerelease
   const replacers = config.replacers
     .map((replacer) => {
+      if (replacer.section !== undefined) return replacer
       try {
         return { ...replacer, search: stringToRegex(replacer.search) }
       } catch {
@@ -98,9 +99,27 @@ const applyOverrides = (
   applyStringOverride(config, input, 'prerelease-identifier', logger)
   applyBooleanOverride(config, input, 'prerelease', logger)
   applyBooleanOverride(config, input, 'include-pre-releases', logger)
-  applyBooleanOverride(config, input, 'latest', logger)
+  // Existing override handling for a mixed-type input (`boolean | 'legacy'`).
+  // Generalize if another input needs the same pattern.
+  applyLatestOverride(config, input, logger)
   applyStringOverride(config, input, 'filter-by-range', logger)
   applyReleaseModeOverrides(config, input, logger)
+}
+
+const applyLatestOverride = (
+  config: MutableConfig,
+  input: CommonConfig,
+  logger: Logger,
+) => {
+  const inputValue = input.latest
+  if (inputValue === undefined) return
+  const configValue = config.latest
+  if (configValue !== undefined && configValue !== inputValue) {
+    logger.info(
+      `Input's latest "${inputValue}" overrides config's latest "${configValue}"`,
+    )
+  }
+  config.latest = inputValue
 }
 
 const applyReleaseModeOverrides = (
@@ -108,13 +127,6 @@ const applyReleaseModeOverrides = (
   input: CommonConfig,
   logger: Logger,
 ) => {
-  if (config.latest && config.prerelease) {
-    logger.warning(
-      "'prerelease' and 'latest' cannot be both true. Switch 'latest' to false - release will be a pre-release.",
-    )
-    config.latest = false
-  }
-
   const hasInputPrerelease = typeof input.prerelease === 'boolean'
   const hasInputPrereleaseIdentifier = !!input['prerelease-identifier']
   if (
@@ -126,6 +138,18 @@ const applyReleaseModeOverrides = (
       `You specified a 'prerelease-identifier' (${config['prerelease-identifier']}), but 'prerelease' is set to false. Switching to true.`,
     )
     config.prerelease = true
+  }
+  if (config.prerelease) {
+    if (config.latest === true) {
+      logger.warning(
+        "'prerelease' and 'latest' cannot be both true. Switch 'latest' to false - release will be a pre-release.",
+      )
+    } else if (config.latest === 'legacy') {
+      logger.warning(
+        "'latest' cannot be 'legacy' when 'prerelease' is true. Switch 'latest' to false - release will be a pre-release.",
+      )
+    }
+    config.latest = false
   }
 }
 

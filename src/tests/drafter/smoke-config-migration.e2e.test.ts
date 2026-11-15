@@ -33,7 +33,7 @@ const runSmokeConfigDryRun = async (params: {
     })
   const gqlScope = nock('https://api.github.com')
     .post('/graphql', (body) =>
-      body.query.includes('query hydrateComparisonCommits'),
+      body?.query?.includes('query hydrateComparisonCommits'),
     )
     .reply(200, {
       data: {
@@ -49,7 +49,7 @@ const runSmokeConfigDryRun = async (params: {
       },
     })
     .post('/graphql', (body) =>
-      body.query.includes('query findRecentMergedPullRequests'),
+      body?.query?.includes('query findRecentMergedPullRequests'),
     )
     .reply(200, {
       data: {
@@ -86,21 +86,23 @@ describe('smoke config migration e2e', () => {
   it.each([
     ['create', ['release']],
     ['update', ['release', 'release-draft']],
-  ] as const)('produces identical dry-run outputs for legacy and migrated smoke configs on %s', async (_mode, releaseFiles) => {
-    const legacy = await runSmokeConfigDryRun({
-      config: 'config-with-smoke-test-categories-legacy',
-      releaseFiles: [...releaseFiles],
-    })
+  ] as const)(
+    'produces identical dry-run outputs for legacy and migrated smoke configs on %s',
+    async (_mode, releaseFiles) => {
+      const legacy = await runSmokeConfigDryRun({
+        config: 'config-with-smoke-test-categories-legacy',
+        releaseFiles: [...releaseFiles],
+      })
 
-    vi.clearAllMocks()
+      vi.clearAllMocks()
 
-    const migrated = await runSmokeConfigDryRun({
-      config: 'config-with-smoke-test-categories-migrated',
-      releaseFiles: [...releaseFiles],
-    })
+      const migrated = await runSmokeConfigDryRun({
+        config: 'config-with-smoke-test-categories-migrated',
+        releaseFiles: [...releaseFiles],
+      })
 
-    expect(migrated).toEqual(legacy)
-    expect(migrated.outputs).toMatchInlineSnapshot(`
+      expect(migrated).toEqual(legacy)
+      expect(migrated.outputs).toMatchInlineSnapshot(`
         [
           [
             "tag_name",
@@ -140,7 +142,12 @@ describe('smoke config migration e2e', () => {
         **Full Changelog**: https://github.com/toolmantim/release-drafter-test-project/compare/v2.0.0...v2.0.1
         ",
           ],
+          [
+            "labels",
+            "[]",
+          ],
         ]
       `)
-  })
+    },
+  )
 })

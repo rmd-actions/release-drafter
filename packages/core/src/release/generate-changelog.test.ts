@@ -67,6 +67,43 @@ const changelog = (config: Record<string, unknown>, pullRequests = bumps) =>
   })
 
 describe('generateChangeLog', () => {
+  it('replaces synthesized titles after matching grouping rules against the original titles', () => {
+    expect(
+      changelog({
+        'change-template': '$TITLE ($NUMBERS)',
+        'group-changes': [bumpRule],
+        replacers: [
+          { target: 'change-title', search: 'Bump', replace: 'Upgrade' },
+        ],
+      }),
+    ).toBe(
+      'Upgrade org.codehaus.mojo:versions-maven-plugin from 2.20.1 to 2.21.0 (#309)\nUpgrade njord.version from 0.9.1 to 0.9.5 (#308, #310, #316)',
+    )
+  })
+
+  it.each([{ labels: [] }, { labels: ['feature'] }])(
+    'escapes bodies in the changelog with labels $labels',
+    ({ labels }) => {
+      expect(
+        changelog(
+          {
+            'change-template': '$BODY',
+            'change-body-escapes': '<',
+            categories: [{ title: 'Features', labels: ['feature'] }],
+          },
+          [
+            {
+              ...pullRequest(42, 'Change', labels),
+              body: '<!-- hidden -->\n\n```md\n<!-- example -->\n```',
+            },
+          ],
+        ),
+      ).toBe(
+        `${labels.length ? '## Features\n\n' : ''}\\<!-- hidden -->\n\n\`\`\`md\n<!-- example -->\n\`\`\``,
+      )
+    },
+  )
+
   it('renders one entry per pull request without grouping rules', () => {
     expect(
       changelog({ 'change-template': '* $TITLE ($NUMBERS)' }),

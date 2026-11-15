@@ -48,6 +48,10 @@
       "default": "$AUTHOR_MENTION",
       "type": "string"
     },
+    "change-authors-exclude-bots": {
+      "default": false,
+      "type": "boolean"
+    },
     "change-authors-separator": {
       "default": ", ",
       "type": "string"
@@ -56,6 +60,9 @@
       "type": "string"
     },
     "change-title-escapes": {
+      "type": "string"
+    },
+    "change-body-escapes": {
       "type": "string"
     },
     "no-changes-template": {
@@ -152,18 +159,57 @@
       "default": [],
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "search": {
-            "type": "string",
-            "minLength": 1
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "search": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replace": {
+                "type": "string",
+                "minLength": 0
+              },
+              "section": {
+                "not": {}
+              },
+              "target": {
+                "type": "string",
+                "enum": ["global", "change-body", "change-title"]
+              },
+              "not-found": {
+                "type": "string",
+                "enum": ["empty", "full"]
+              }
+            },
+            "required": ["search", "replace"]
           },
-          "replace": {
-            "type": "string",
-            "minLength": 0
+          {
+            "type": "object",
+            "properties": {
+              "section": {
+                "type": "string",
+                "pattern": "^#{1,6}[ \\t]+(?=[^\\r\\n]*[^# \\t\\r\\n])\\S[^\\r\\n]*$"
+              },
+              "target": {
+                "type": "string",
+                "const": "change-body"
+              },
+              "search": {
+                "not": {}
+              },
+              "replace": {
+                "not": {}
+              },
+              "not-found": {
+                "type": "string",
+                "enum": ["empty", "full"]
+              }
+            },
+            "required": ["section", "target"]
           }
-        },
-        "required": ["search", "replace"]
+        ]
       }
     },
     "group-changes": {
@@ -481,35 +527,22 @@
     "latest": {
       "anyOf": [
         {
-          "type": "string"
+          "type": ["string", "boolean"]
         },
         {
-          "type": "boolean"
+          "type": "string",
+          "const": "legacy"
         }
       ]
     },
     "prerelease": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "boolean"
-        }
-      ]
+      "type": ["string", "boolean"]
     },
     "prerelease-identifier": {
       "type": "string"
     },
     "include-pre-releases": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "boolean"
-        }
-      ]
+      "type": ["string", "boolean"]
     },
     "commitish": {
       "type": "string"

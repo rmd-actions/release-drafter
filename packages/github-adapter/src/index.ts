@@ -1,4 +1,3 @@
-import process from 'node:process'
 import type {
   ChangeSet,
   CreateReleaseRequest,
@@ -8,6 +7,7 @@ import type {
   PullRequestReader,
   PullRequestValidationData,
   Release,
+  ReleasePayload,
   Repository,
   ResolveCommitishRequest,
   UpdateReleaseRequest,
@@ -33,7 +33,6 @@ import {
   normalizeRelease,
 } from './utils/normalize.ts'
 import {
-  createProxyAwareFetch,
   deriveEndpoints,
   type GitHubOctokit,
   GitHubOctokitClient,
@@ -76,14 +75,12 @@ export class GitHubAdapter implements ForgeAdapter, PullRequestReader {
     if (options.octokit) {
       this.octokit = options.octokit
     } else {
-      const requestFetch =
-        options.fetch ?? createProxyAwareFetch(options.env ?? process.env)
       this.octokit = new GitHubOctokitClient({
         auth: options.token,
         baseUrl: this.apiUrl,
         log: { ...this.logger, warn: this.logger.warning.bind(this.logger) },
         request: {
-          fetch: requestFetch,
+          fetch: options.fetch ?? globalThis.fetch,
           ...(options.requestAgent ? { agent: options.requestAgent } : {}),
           ...(options.requestRetries === undefined
             ? {}
@@ -558,11 +555,7 @@ export class GitHubAdapter implements ForgeAdapter, PullRequestReader {
       body: payload.body,
       draft: payload.draft,
       prerelease: payload.prerelease,
-      make_latest: payload.prerelease
-        ? 'false'
-        : payload.makeLatest
-          ? 'true'
-          : 'false',
+      make_latest: this.toMakeLatest(payload),
       name: payload.name,
       tag_name: payload.tag,
       target_commitish: payload.targetCommitish,
@@ -583,11 +576,7 @@ export class GitHubAdapter implements ForgeAdapter, PullRequestReader {
       body: payload.body,
       draft: payload.draft,
       prerelease: payload.prerelease,
-      make_latest: payload.prerelease
-        ? 'false'
-        : payload.makeLatest
-          ? 'true'
-          : 'false',
+      make_latest: this.toMakeLatest(payload),
       ...(payload.name || release.name
         ? { name: payload.name || release.name || undefined }
         : {}),
@@ -599,6 +588,12 @@ export class GitHubAdapter implements ForgeAdapter, PullRequestReader {
         : {}),
     })
     return normalizeRelease(response.data)
+  }
+
+  private toMakeLatest(payload: ReleasePayload): 'true' | 'false' | 'legacy' {
+    if (payload.prerelease) return 'false'
+    if (payload.makeLatest === 'legacy') return 'legacy'
+    return payload.makeLatest ? 'true' : 'false'
   }
 
   async getRepositoryConfig({
