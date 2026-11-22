@@ -7,11 +7,15 @@ import process from 'node:process'
 import { parseArgs } from 'node:util'
 import {
   type CommonConfig,
+  createLocalConfigFileReader,
   type DraftReleaseResult,
   draftRelease,
   evaluatePullRequest,
   type ForgeAdapter,
+  type LatestReleaseSetting,
+  type LocalConfigFileReader,
   type Logger,
+  loadConfig,
   mergeInputAndConfig,
   type ParsedConfig,
   type PullRequestReader,
@@ -29,11 +33,6 @@ import {
   type GitLabAdapterOptions,
 } from '@release-drafter/gitlab-adapter'
 import type { RestAdapterOptions } from '@release-drafter/rest-adapter'
-import { loadConfig } from './config.ts'
-import {
-  createLocalConfigFileReader,
-  type LocalConfigFileReader,
-} from './local-config-file.ts'
 export const CLI_PACKAGE_NAME = '@release-drafter/cli' as const
 export const CLI_VERSION = '7.7.0'
 
@@ -94,7 +93,7 @@ type ParsedOptions = {
   dryRun: boolean
   publish: boolean
   prerelease?: boolean
-  latest?: boolean
+  latest?: LatestReleaseSetting
   json: boolean
   serverUrl: string
   apiUrl?: string
@@ -121,7 +120,7 @@ Options:
       --dry-run                Calculate without writing
       --publish [true|false]   Publish the release when true (default: false)
       --prerelease [true|false]
-      --latest [true|false]
+      --latest [true|false|legacy]
       --json                   Write one JSON result document to stdout
       --forge <name>           github, gitea, forgejo, or gitlab
       --server-url <url>       Forge web URL
@@ -216,6 +215,17 @@ const parseOptionalBoolean = (
   if (value === 'true') return true
   if (value === 'false') return false
   throw new UsageError(`${option} must be true or false.`)
+}
+
+const parseOptionalLatest = (
+  value: string | undefined,
+): LatestReleaseSetting | undefined => {
+  if (value === 'legacy') return value
+  try {
+    return parseOptionalBoolean(value, '--latest')
+  } catch {
+    throw new UsageError('--latest must be true, false, or legacy.')
+  }
 }
 
 const parseUrl = (value: string | undefined, option: string) => {
@@ -416,7 +426,9 @@ const parseCommandLine = (argv: readonly string[]) => {
     dryRun: values['dry-run'],
     publish: parseOptionalBoolean(values.publish, '--publish') ?? false,
     prerelease: parseOptionalBoolean(values.prerelease, '--prerelease'),
-    latest: parseOptionalBoolean(values.latest, '--latest'),
+    // Existing parse handling for a mixed-type input (`boolean | 'legacy'`).
+    // Generalize if another input needs the same pattern.
+    latest: parseOptionalLatest(values.latest),
     json: values.json,
     serverUrl,
     apiUrl,
@@ -523,6 +535,7 @@ const resultDocument = (result: DraftReleaseResult) => {
     latest: payload.makeLatest,
     dry_run: dryRun,
     body: payload.body,
+    labels: result.labels,
   }
 }
 
@@ -533,6 +546,7 @@ const pullRequestResultDocument = (
   action: 'check-pr' as const,
   number: pullRequest.number,
   title: pullRequest.title,
+  labels: evaluation.labels,
   status: evaluation.skipped
     ? ('skipped' as const)
     : evaluation.valid
@@ -645,7 +659,7 @@ export async function runCli(
         serverUrl: options.serverUrl,
         apiUrl: adapterApiUrl,
         ...(options.forge === 'github'
-          ? { graphqlUrl: adapterGraphqlUrl, env }
+          ? { graphqlUrl: adapterGraphqlUrl }
           : {}),
         logger,
       },

@@ -13,10 +13,13 @@ export const generateChangeLog = (params: {
   config: Pick<
     ParsedConfig,
     | 'change-title-escapes'
+    | 'change-body-escapes'
+    | 'replacers'
     | 'no-changes-template'
     | 'categories'
     | 'change-template'
     | 'change-author-template'
+    | 'change-authors-exclude-bots'
     | 'change-authors-separator'
     | 'change-authors-final-separator'
     | 'category-template'

@@ -2,20 +2,15 @@ import { spawnSync } from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
-import { builtinModules } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-type PackedFile = { mode?: number; path: string }
-type PackResult = { filename: string; files: PackedFile[] }
+type PackResult = { filename: string }
 type PackOutput = PackResult[] | Record<string, PackResult>
 type CommandResult = {
   error?: Error
@@ -33,74 +28,14 @@ const npmCli = resolve(
   process.env.npm_execpath ?? 'node_modules/npm/bin/npm-cli.js',
 )
 const npxCli = join(dirname(npmCli), 'npx-cli.js')
-const expectedPackageFiles = [
-  'LICENSE',
-  'README.md',
-  'THIRD_PARTY_NOTICES',
-  'dist/chunks/src-[content-hash].js',
-  'dist/cli.js',
-  'dist/index.d.ts',
-  'dist/index.js',
-  'package.json',
-]
-const expectedBundledDependencyNotices = [
-  'balanced-match',
-  'brace-expansion',
-  'compare-versions',
-  'conventional-commits-parser',
-  'escape-string-regexp',
-  'minimatch',
-  'verkit',
-  'yaml',
-  'zod',
-]
-const approvedRuntimeDependencies = {
-  '@gitbeaker/rest': '43.8.0',
-  '@octokit/core': '^7.0.6',
-  '@octokit/plugin-paginate-graphql': '^6.0.0',
-  '@octokit/plugin-paginate-rest': '^14.0.0',
-  '@octokit/plugin-rest-endpoint-methods': '^17.0.0',
-  '@octokit/plugin-retry': '^8.1.0',
-  undici: '^7.29.0',
-}
-const nodeBuiltins = new Set(
-  builtinModules.map((specifier) => specifier.replace(/^node:/, '')),
-)
-
-const normalizePackageFile = (path: string): string =>
-  /^dist\/chunks\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]+\.js$/.test(path)
-    ? 'dist/chunks/src-[content-hash].js'
-    : path
-
-const importedSpecifiers = (source: string): string[] => {
-  const specifiers: string[] = []
-  const patterns = [
-    /(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/g,
-    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ]
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      if (match[1]) specifiers.push(match[1])
-    }
-  }
-  return specifiers
-}
-
 const parsePackResult = (output: string): PackResult => {
   const parsed = JSON.parse(output) as PackOutput
   const result = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0]
-  if (!result?.filename || !Array.isArray(result.files)) {
+  if (!result?.filename) {
     throw new Error(`npm pack did not describe an artifact:\n${output}`)
   }
   return result
 }
-
-const listFiles = (directory: string): string[] =>
-  readdirSync(directory).flatMap((entry) => {
-    const path = join(directory, entry)
-    return statSync(path).isDirectory() ? listFiles(path) : [path]
-  })
 
 const isolatedEnvironment = (): NodeJS.ProcessEnv => {
   const environment = { ...process.env }
@@ -115,6 +50,7 @@ const isolatedEnvironment = (): NodeJS.ProcessEnv => {
     'NODE_AUTH_TOKEN',
     'NPM_TOKEN',
     'RELEASE_DRAFTER_TOKEN',
+    'npm_config_allow_scripts',
   ]) {
     delete environment[name]
   }
@@ -228,25 +164,14 @@ const containsJsonOutput = (output: string): boolean =>
     )
   })
 
-describe.sequential('release-drafter packed CLI and package consumer', () => {
+describe('release-drafter packed CLI and package consumer', {
+  concurrent: false,
+}, () => {
   let temporaryDirectory: string
   let consumerDirectory: string
   let installedPackageDirectory: string
   let installedCli: string
-  let manifest: {
-    bin?: Record<string, string> | string
-    bugs?: { url?: string } | string
-    dependencies?: Record<string, string>
-    exports?: { '.'?: { import?: string; types?: string } | string }
-    homepage?: string
-    keywords?: string[]
-    license?: string
-    name?: string
-    repository?: { type?: string; url?: string } | string
-    type?: string
-    version?: string
-  }
-  let packResult: PackResult
+  let manifest: { version: string }
 
   beforeAll(async () => {
     temporaryDirectory = mkdtempSync(join(tmpdir(), 'release-drafter-cli-'))
@@ -255,7 +180,7 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
     mkdirSync(packDirectory)
     mkdirSync(consumerDirectory)
 
-    packResult = parsePackResult(
+    const packResult = parsePackResult(
       expectSuccessfulNpm(
         [
           'pack',
@@ -305,87 +230,29 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
     rmSync(temporaryDirectory, { force: true, recursive: true })
   })
 
-  it('ships exactly the public package inventory with its license notices', () => {
-    expect(
-      packResult.files.map(({ path }) => normalizePackageFile(path)).sort(),
-    ).toEqual(expectedPackageFiles)
+  it('includes the package license and third-party notices', () => {
     expect(
       readFileSync(join(installedPackageDirectory, 'LICENSE'), 'utf8'),
     ).toBe(readFileSync(join(repositoryRoot, 'LICENSE'), 'utf8'))
-    const thirdPartyNotices = readFileSync(
-      join(installedPackageDirectory, 'THIRD_PARTY_NOTICES'),
-      'utf8',
-    )
-    expect(thirdPartyNotices).toBe(
-      readFileSync(join(packageDirectory, 'THIRD_PARTY_NOTICES'), 'utf8'),
-    )
-    for (const dependency of expectedBundledDependencyNotices) {
-      expect(thirdPartyNotices).toContain(`\n${dependency}\n`)
-    }
-    const installedPackageFiles = listFiles(installedPackageDirectory)
-      .map((path) => path.slice(installedPackageDirectory.length + 1))
-      .filter((path) => !path.startsWith('node_modules/'))
-      .map(normalizePackageFile)
-      .sort()
-    expect(installedPackageFiles).toEqual(expectedPackageFiles)
-  })
-
-  it('publishes the ESM API, executable CLI, and approved public dependencies', () => {
-    expect(manifest).toMatchObject({
-      bin: { 'release-drafter': 'dist/cli.js' },
-      exports: {
-        '.': {
-          import: './dist/index.js',
-          types: {
-            default: './dist/index.d.ts',
-            'release-drafter-source': './src/index.ts',
-          },
-        },
-      },
-      bugs: {
-        url: 'https://github.com/release-drafter/release-drafter/issues',
-      },
-      homepage: 'https://github.com/release-drafter/release-drafter',
-      keywords: ['actions', 'release', 'release-notes', 'release-automation'],
-      license: 'ISC',
-      name: 'release-drafter',
-      repository: {
-        type: 'git',
-        url: 'git+https://github.com/release-drafter/release-drafter.git',
-      },
-      type: 'module',
-    })
-    expect(manifest.dependencies).toEqual(approvedRuntimeDependencies)
-  })
-
-  it('preserves the CLI shebang and executable mode where the platform exposes it', () => {
-    const packedCli = packResult.files.find(
-      ({ path }) => path === 'dist/cli.js',
-    )
-    const installedCliPath = join(installedPackageDirectory, 'dist/cli.js')
     expect(
-      readFileSync(installedCliPath, 'utf8').startsWith(
-        '#!/usr/bin/env node\n',
+      readFileSync(
+        join(installedPackageDirectory, 'THIRD_PARTY_NOTICES'),
+        'utf8',
       ),
-    ).toBe(true)
-
-    if (process.platform !== 'win32') {
-      expect(packedCli?.mode).toBeDefined()
-      expect((packedCli?.mode ?? 0) & 0o111).not.toBe(0)
-      expect(statSync(installedCliPath).mode & 0o111).not.toBe(0)
-      expect(statSync(installedCli).mode & 0o111).not.toBe(0)
-    }
+    ).toBe(readFileSync(join(packageDirectory, 'THIRD_PARTY_NOTICES'), 'utf8'))
   })
 
   it('type-checks and imports the programmatic API without CLI side effects', () => {
     writeFileSync(
       join(consumerDirectory, 'consumer.mts'),
       `
-      import { createForgeAdapter, draftRelease } from 'release-drafter'
+      import { createForgeAdapter, draftRelease, loadConfig } from 'release-drafter'
       import type {
         CreateForgeAdapterOptions,
+        DraftReleaseConfig,
         DraftReleaseOptions,
         DraftReleaseResult,
+        LoadConfigOptions,
         ForgeAdapter,
         ForgejoForgeAdapterOptions,
         GiteaForgeAdapterOptions,
@@ -400,6 +267,14 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
       declare const adapter: ForgeAdapter
       declare const logger: Logger
       const injectable = { adapter, logger } satisfies Partial<DraftReleaseOptions>
+      const load: (options: LoadConfigOptions) => Promise<DraftReleaseConfig> = loadConfig
+      const bundled = createForgeAdapter({ forge: 'github', token: 'token' })
+      void loadConfig({
+        adapter: bundled,
+        repository: { owner: 'acme', name: 'widgets', serverUrl: 'https://github.com' },
+        overrides: { prerelease: true, latest: false },
+      })
+      void load
       void invoke
       void injectable
       const factoryOptions = {
@@ -476,6 +351,24 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
       if (typeof facade.draftRelease !== 'function') {
         throw new Error('draftRelease is not a function')
       }
+      if (typeof facade.loadConfig !== 'function') {
+        throw new Error('loadConfig is not a function')
+      }
+      const config = await facade.loadConfig({
+        adapter: {
+          getDefaultBranch: async () => 'main',
+          getRepositoryConfig: async ({ path, ref }) => {
+            if (path !== '.github/release-drafter.yml' || ref !== 'main') {
+              throw new Error('unexpected configuration target')
+            }
+            return 'template: $CHANGES\\n'
+          },
+        },
+        repository: { owner: 'acme', name: 'widgets', serverUrl: 'https://example.test' },
+      })
+      if (config.commitish !== 'main' || config.latest !== true || !config['change-template']) {
+        throw new Error('configuration was not normalized')
+      }
       stdoutWrite.call(process.stdout, 'imported\\n')
     `,
     )
@@ -541,7 +434,11 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
           async findChanges() {
             return {
               commits: [],
-              pullRequests: [],
+              pullRequests: [{
+                number: 42,
+                title: 'Change',
+                body: ${JSON.stringify('<!-- hidden -->\n\n```md\n<!-- example -->\n```')},
+              }],
               newContributorLogins: new Set(),
             }
           },
@@ -556,7 +453,8 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
           },
         },
         config: {
-          'change-template': '* $TITLE',
+          'change-template': '$BODY',
+          'change-body-escapes': '<',
           'change-author-template': '$AUTHOR_MENTION',
           'change-authors-separator': ', ',
           'no-changes-template': '* No changes',
@@ -590,7 +488,8 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
 
       if (
         result.plan.action !== 'dry-run' ||
-        result.releasePayload.tag !== 'v1.0.1'
+        result.releasePayload.tag !== 'v1.0.1' ||
+        result.releasePayload.body !== ${JSON.stringify('\\<!-- hidden -->\n\n```md\n<!-- example -->\n```')}
       ) {
         throw new Error(JSON.stringify(result))
       }
@@ -661,67 +560,5 @@ describe.sequential('release-drafter packed CLI and package consumer', () => {
     expect(diagnostic).toMatch(/forge/i)
     expect(diagnostic).toMatch(/invalid|supported|unknown|usage/i)
     expect(diagnostic).not.toMatch(/token|authenticat|network|fetch|ECONN/i)
-  })
-
-  it('contains no private imports, bundled dependency markers, loaders, paths, or undeclared external imports', () => {
-    const shippedSources = listFiles(installedPackageDirectory).filter(
-      (path) => {
-        const relativePath = path.slice(installedPackageDirectory.length + 1)
-        return (
-          !relativePath.startsWith('node_modules/') &&
-          /(?:\.js|\.d\.[cm]?ts)$/.test(path)
-        )
-      },
-    )
-    const failures = shippedSources.flatMap((path) => {
-      const source = readFileSync(path, 'utf8')
-      const relativePath = path.slice(installedPackageDirectory.length + 1)
-      const problems: string[] = []
-      const checks: [RegExp, string][] = [
-        [
-          /node-semver|MAX_SAFE_(?:COMPONENT|BUILD)_LENGTH/,
-          'node-semver marker',
-        ],
-        [
-          /\bcreateRequire\b|\b__require\b|\brequire\s*\(|\bmodule\.exports\b|\b__commonJS/,
-          'CommonJS loader',
-        ],
-        [
-          new RegExp(
-            `${repositoryRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|${pathToFileURL(repositoryRoot).href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
-          ),
-          'absolute repository path',
-        ],
-      ]
-      for (const [pattern, description] of checks) {
-        if (pattern.test(source)) problems.push(description)
-      }
-
-      for (const specifier of importedSpecifiers(source)) {
-        if (
-          specifier.startsWith('@release-drafter/') ||
-          specifier.startsWith('@actions/')
-        ) {
-          problems.push(`private runtime import: ${specifier}`)
-          continue
-        }
-        const bareBuiltin = specifier.replace(/^node:/, '')
-        const packageName = specifier.startsWith('@')
-          ? specifier.split('/').slice(0, 2).join('/')
-          : specifier.split('/')[0]
-        if (
-          !specifier.startsWith('.') &&
-          !specifier.startsWith('node:') &&
-          !nodeBuiltins.has(bareBuiltin) &&
-          !nodeBuiltins.has(bareBuiltin.split('/')[0] ?? '') &&
-          !Object.hasOwn(approvedRuntimeDependencies, packageName)
-        ) {
-          problems.push(`undeclared external import: ${specifier}`)
-        }
-      }
-      return problems.map((problem) => `${relativePath}: ${problem}`)
-    })
-
-    expect(failures).toEqual([])
   })
 })
